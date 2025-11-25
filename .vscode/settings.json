@@ -3,7 +3,12 @@
     ".eslintrc.json.typings": "jsonc"
   },
   "files.exclude": {
-    "**/.nyc_output": true
+    "**/.nyc_output": true,
+    "dist/": true,
+    "demo/dist/": true,
+    "**/lib": true,
+    "**/out": true,
+    "**/out-esbuild": true,
   },
   "typescript.preferences.importModuleSpecifier": "non-relative",
   "typescript.preferences.quoteStyle": "single",
