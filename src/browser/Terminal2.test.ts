@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import * as glob from 'glob';
+import { globSync } from 'glob';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -15,7 +15,7 @@ import { IDisposable } from '@xterm/xterm';
 const COLS = 80;
 const ROWS = 25;
 
-const TESTFILES = glob.sync('**/escape_sequence_files/*.in', { cwd: path.join(__dirname, '../..')});
+const TESTFILES = globSync('**/escape_sequence_files/*.in', { cwd: path.join(__dirname, '../..')});
 const SKIP_FILES = [
   't0055-EL.in',            // EL/ED handle cursor at cols differently (see #3362)
   't0084-CBT.in',
