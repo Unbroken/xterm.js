@@ -306,6 +306,26 @@ describe('Color', () => {
       it('should convert "transparent" to an IColor', () => {
         assert.deepEqual(css.toColor('transparent'), { css: 'transparent', rgba: 0x00000000 });
       });
+      it('should convert the color() format to an IColor', () => {
+        // srgb color space
+        assert.deepEqual(css.toColor('color(srgb 1 0 0)'), { css: 'color(srgb 1 0 0)', rgba: 0xff0000ff });
+        assert.deepEqual(css.toColor('color(srgb 0 1 0)'), { css: 'color(srgb 0 1 0)', rgba: 0x00ff00ff });
+        assert.deepEqual(css.toColor('color(srgb 0 0 1)'), { css: 'color(srgb 0 0 1)', rgba: 0x0000ffff });
+        assert.deepEqual(css.toColor('color(srgb 0.5 0.5 0.5)'), { css: 'color(srgb 0.5 0.5 0.5)', rgba: 0x808080ff });
+
+        // With alpha
+        assert.deepEqual(css.toColor('color(srgb 1 0 0 / 0.5)'), { css: 'color(srgb 1 0 0 / 0.5)', rgba: 0xff000080 });
+        assert.deepEqual(css.toColor('color(srgb 1 1 1 / 0)'), { css: 'color(srgb 1 1 1 / 0)', rgba: 0xffffff00 });
+
+        // Other color spaces (treated same as srgb for conversion)
+        assert.deepEqual(css.toColor('color(display-p3 1 0 0)'), { css: 'color(display-p3 1 0 0)', rgba: 0xff0000ff });
+        assert.deepEqual(css.toColor('color(a98-rgb 0.5 0.5 0.5)'), { css: 'color(a98-rgb 0.5 0.5 0.5)', rgba: 0x808080ff });
+        assert.deepEqual(css.toColor('color(prophoto-rgb 0 0 0)'), { css: 'color(prophoto-rgb 0 0 0)', rgba: 0x000000ff });
+        assert.deepEqual(css.toColor('color(rec2020 1 1 1)'), { css: 'color(rec2020 1 1 1)', rgba: 0xffffffff });
+
+        // Extended range (values clamped)
+        assert.deepEqual(css.toColor('color(srgb 1.5 -0.5 0.5)'), { css: 'color(srgb 1.5 -0.5 0.5)', rgba: 0xff0080ff });
+      });
     });
   });
 
