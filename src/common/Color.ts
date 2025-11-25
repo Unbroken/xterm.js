@@ -184,6 +184,26 @@ export namespace css {
       return channels.toColor($r, $g, $b, $a);
     }
 
+    // Format: color(<color-space> r g b [/ a])
+    const colorMatch = css.match(/^color\(\s*(srgb|display-p3|a98-rgb|prophoto-rgb|rec2020)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)(?:\s*\/\s*([-\d.]+))?\s*\)$/);
+    if (colorMatch) {
+      const r = parseFloat(colorMatch[2]);
+      const g = parseFloat(colorMatch[3]);
+      const b = parseFloat(colorMatch[4]);
+      const a = colorMatch[5] !== undefined ? parseFloat(colorMatch[5]) : 1;
+
+      // Clamp and convert 0-1 range to 0-255
+      $r = Math.round(Math.max(0, Math.min(1, r)) * 255);
+      $g = Math.round(Math.max(0, Math.min(1, g)) * 255);
+      $b = Math.round(Math.max(0, Math.min(1, b)) * 255);
+      $a = Math.round(Math.max(0, Math.min(1, a)) * 255);
+
+      return {
+        css,
+        rgba: channels.toRgba($r, $g, $b, $a)
+      };
+    }
+
     // Validate the context is available for canvas-based color parsing
     if (!$ctx || !$litmusColor) {
       throw new Error('css.toColor: Unsupported css format');
