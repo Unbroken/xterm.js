@@ -18,8 +18,8 @@
     "xterm.js"
   ],
   "scripts": {
-    "prepackage": "../../node_modules/.bin/tsgo -p .",
-    "package": "../../node_modules/.bin/webpack",
+    "prepackage": "npx tsgo -p .",
+    "package": "npx webpack",
     "prepublishOnly": "npm run package",
     "start": "node ../../demo/start"
   },
