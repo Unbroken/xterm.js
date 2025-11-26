@@ -1,0 +1,1 @@
+../../typings/xterm-headless.d.ts
