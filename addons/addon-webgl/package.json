@@ -17,9 +17,9 @@
     "xterm.js"
   ],
   "scripts": {
-    "build": "../../node_modules/.bin/tsgo -p .",
+    "build": "npx tsgo -p .",
     "prepackage": "npm run build",
-    "package": "../../node_modules/.bin/webpack",
+    "package": "npx webpack",
     "prepublishOnly": "npm run package",
     "start": "node ../../demo/start"
   }

@@ -10,6 +10,8 @@
   "license": "MIT",
   "workspaces": [
     "addons/*"
+    , "headless"
+    , "."
   ],
   "overrides": {
     "serialize-javascript": "^7.0.3"
