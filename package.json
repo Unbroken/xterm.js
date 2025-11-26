@@ -10,6 +10,8 @@
   "license": "MIT",
   "workspaces": [
     "addons/*"
+    , "headless"
+    , "."
   ],
   "keywords": [
     "cli",

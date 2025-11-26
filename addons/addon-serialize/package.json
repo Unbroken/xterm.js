@@ -16,9 +16,9 @@
     "xterm.js"
   ],
   "scripts": {
-    "build": "../../node_modules/.bin/tsc -p .",
+    "build": "npx tsc -p .",
     "prepackage": "npm run build",
-    "package": "../../node_modules/.bin/webpack",
+    "package": "npx webpack",
     "prepublishOnly": "npm run package",
     "start": "node ../../demo/start",
     "benchmark": "NODE_PATH=../../out:./out:./out-benchmark/ ../../node_modules/.bin/xterm-benchmark -r 5 -c benchmark/benchmark.json",
