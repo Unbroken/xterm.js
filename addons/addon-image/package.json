@@ -18,8 +18,8 @@
     "xterm.js"
   ],
   "scripts": {
-    "prepackage": "../../node_modules/.bin/tsc -p .",
-    "package": "../../node_modules/.bin/webpack",
+    "prepackage": "npx tsc -p .",
+    "package": "npx webpack",
     "prepublishOnly": "npm run package",
     "start": "node ../../demo/start"
   },
