@@ -18,19 +18,16 @@ const xtermHeadlessPackageJson = {
   description: 'A headless terminal component that runs in Node.js',
   main: 'lib-headless/xterm-headless.js',
   types: 'typings/xterm-headless.d.ts',
+  scripts: {
+    "prepack": "node ../bin/typings-helper.js prepack xterm-headless.d.ts",
+    "postpack": "node ../bin/typings-helper.js postpack xterm-headless.d.ts",
+    "package": "true"
+  },
 };
-delete xtermHeadlessPackageJson['scripts'];
 delete xtermHeadlessPackageJson['devDependencies'];
 delete xtermHeadlessPackageJson['style'];
-fs.writeFileSync(join(headlessRoot, 'package.json'), JSON.stringify(xtermHeadlessPackageJson, null, 1));
+fs.writeFileSync(join(headlessRoot, 'package.json'), JSON.stringify(xtermHeadlessPackageJson, null, 2));
 console.log(fs.readFileSync(join(headlessRoot, 'package.json')).toString());
-
-console.log('> headless/typings/');
-mkdirF(join(headlessRoot, 'typings'));
-fs.copyFileSync(
-  join(repoRoot, 'typings/xterm-headless.d.ts'),
-  join(headlessRoot, 'typings/xterm-headless.d.ts')
-);
 
 console.log('> headless/logo-full.png');
 fs.copyFileSync(
@@ -51,7 +48,7 @@ exec('npm publish --dry-run', { cwd: headlessRoot }, (error, stdout, stderr) => 
     return;
   }
   if (stderr) {
-      console.error(`stderr:\n${stderr}`);
+    console.error(`stderr:\n${stderr}`);
   }
   console.log(`stdout:\n${stdout}`);
 });
