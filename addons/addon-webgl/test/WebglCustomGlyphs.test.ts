@@ -29,6 +29,29 @@ test.describe('WebGL custom glyphs', () => {
     test.skip(({ browserName }) => browserName === 'firefox' || browserName === 'webkit');
   }
 
+  test('pattern glyphs render in the display-p3 color space', async ({ browser }) => {
+    const ctx = await createTestContext(browser);
+    const errors: string[] = [];
+    const onError = (error: Error): void => { errors.push(error.message); };
+    ctx.page.on('pageerror', onError);
+    try {
+      await openTerminal(ctx);
+      await ctx.page.evaluate(`
+        window.term.options.colorSpace = 'display-p3';
+        window.addon = new window.WebglAddon({ customGlyphs: true });
+        window.term.loadAddon(window.addon);
+      `);
+
+      await writeAndWaitForRender(ctx, '\u2591');
+      await writeAndWaitForRender(ctx, 'X');
+
+      expect(errors).toEqual([]);
+    } finally {
+      ctx.page.off('pageerror', onError);
+      await ctx.page.close();
+    }
+  });
+
   test('pattern glyphs render after the terminal is adopted into another document', async ({ browser }) => {
     const ctx = await createTestContext(browser);
     const errors: string[] = [];

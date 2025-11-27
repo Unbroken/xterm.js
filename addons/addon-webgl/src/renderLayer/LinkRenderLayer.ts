@@ -9,6 +9,7 @@ import { IRenderDimensions } from 'browser/renderer/shared/Types';
 import { ICoreBrowserService, IThemeService } from 'browser/services/Services';
 import { ILinkifier2, ILinkifierEvent } from 'browser/Types';
 import { IOptionsService } from 'common/services/Services';
+import { toCssColor } from 'common/Color';
 import { Terminal } from '@xterm/xterm';
 import { BaseRenderLayer } from './BaseRenderLayer';
 
@@ -53,13 +54,14 @@ export class LinkRenderLayer extends BaseRenderLayer {
   }
 
   private _handleShowLinkUnderline(e: ILinkifierEvent): void {
+    const colorSpace = this._optionsService.rawOptions.colorSpace;
     if (e.fg === INVERTED_DEFAULT_COLOR) {
-      this._ctx.fillStyle = this._themeService.colors.background.css;
+      this._ctx.fillStyle = toCssColor(this._themeService.colors.background.css, colorSpace);
     } else if (e.fg !== undefined && is256Color(e.fg)) {
       // 256 color support
-      this._ctx.fillStyle = this._themeService.colors.ansi[e.fg!].css;
+      this._ctx.fillStyle = toCssColor(this._themeService.colors.ansi[e.fg!].css, colorSpace);
     } else {
-      this._ctx.fillStyle = this._themeService.colors.foreground.css;
+      this._ctx.fillStyle = toCssColor(this._themeService.colors.foreground.css, colorSpace);
     }
 
     if (e.y1 === e.y2) {

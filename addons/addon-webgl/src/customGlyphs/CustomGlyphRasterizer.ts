@@ -48,14 +48,15 @@ export function tryDrawCustomGlyph(
   devicePixelRatio: number,
   logService: ILogService,
   backgroundColor?: string,
-  variantOffset: number = 0
+  variantOffset: number = 0,
+  colorSpace?: 'srgb' | 'display-p3'
 ): boolean {
   const unifiedCharDefinition = customGlyphDefinitions[c];
   if (unifiedCharDefinition) {
     // Normalize to array for uniform handling
     const parts = Array.isArray(unifiedCharDefinition) ? unifiedCharDefinition : [unifiedCharDefinition];
     for (const part of parts) {
-      drawDefinitionPart(ctx, part, xOffset, yOffset, deviceCellWidth, deviceCellHeight, deviceCharWidth, deviceCharHeight, fontSize, devicePixelRatio, logService, backgroundColor, variantOffset);
+      drawDefinitionPart(ctx, part, xOffset, yOffset, deviceCellWidth, deviceCellHeight, deviceCharWidth, deviceCharHeight, fontSize, devicePixelRatio, logService, backgroundColor, variantOffset, colorSpace);
     }
     return true;
   }
@@ -76,7 +77,8 @@ function drawDefinitionPart(
   devicePixelRatio: number,
   logService: ILogService,
   backgroundColor?: string,
-  variantOffset: number = 0
+  variantOffset: number = 0,
+  colorSpace?: 'srgb' | 'display-p3'
 ): void {
   // Handle scaleType - adjust dimensions and offset when scaling to character area
   let drawWidth = deviceCellWidth;
@@ -102,7 +104,7 @@ function drawDefinitionPart(
       drawBlockVectorChar(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight);
       break;
     case CustomGlyphDefinitionType.BLOCK_PATTERN:
-      drawPatternChar(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight, variantOffset);
+      drawPatternChar(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight, variantOffset, colorSpace);
       break;
     case CustomGlyphDefinitionType.PATH_FUNCTION:
       drawPathFunctionCharacter(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight, devicePixelRatio, logService, part.strokeWidth);
@@ -466,7 +468,8 @@ function drawPatternChar(
   yOffset: number,
   deviceCellWidth: number,
   deviceCellHeight: number,
-  variantOffset: number = 0
+  variantOffset: number = 0,
+  colorSpace?: 'srgb' | 'display-p3'
 ): void {
   let patternSet = cachedPatterns.get(charDefinition);
   if (!patternSet) {
@@ -484,34 +487,19 @@ function drawPatternChar(
     // The atlas canvas can be adopted into another document, so temporary resources must not use
     // its mutable ownerDocument.
     const tmpCanvas = createPatternCanvas(width, height);
-    const tmpCtx = throwIfFalsy(tmpCanvas.getContext('2d'));
+    const tmpCtx = throwIfFalsy(tmpCanvas.getContext('2d', { colorSpace }));
+    // Tint a mask of the pattern, so that any color format the canvas serializes fillStyle to
+    // works, such as color(display-p3 ...).
     const imageData = new ImageData(width, height);
-
-    // Extract rgba from fillStyle
-    let r: number;
-    let g: number;
-    let b: number;
-    let a: number;
-    if (fillStyle.startsWith('#')) {
-      r = parseInt(fillStyle.slice(1, 3), 16);
-      g = parseInt(fillStyle.slice(3, 5), 16);
-      b = parseInt(fillStyle.slice(5, 7), 16);
-      a = fillStyle.length > 7 && parseInt(fillStyle.slice(7, 9), 16) || 1;
-    } else if (fillStyle.startsWith('rgba')) {
-      ([r, g, b, a] = fillStyle.substring(5, fillStyle.length - 1).split(',').map(e => parseFloat(e)));
-    } else {
-      throw new Error(`Unexpected fillStyle color format "${fillStyle}" when drawing pattern glyph`);
-    }
-
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        imageData.data[(y * width + x) * 4    ] = r;
-        imageData.data[(y * width + x) * 4 + 1] = g;
-        imageData.data[(y * width + x) * 4 + 2] = b;
-        imageData.data[(y * width + x) * 4 + 3] = charDefinition[y][x] * (a * 255);
+        imageData.data[(y * width + x) * 4 + 3] = charDefinition[y][x] * 255;
       }
     }
     tmpCtx.putImageData(imageData, 0, 0);
+    tmpCtx.globalCompositeOperation = 'source-in';
+    tmpCtx.fillStyle = fillStyle;
+    tmpCtx.fillRect(0, 0, width, height);
     pattern = throwIfFalsy(ctx.createPattern(tmpCanvas, null));
     patternSet.set(fillStyle, pattern);
   }
