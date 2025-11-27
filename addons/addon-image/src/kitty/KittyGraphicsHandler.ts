@@ -638,7 +638,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
         const canvasW = (cmd.columns !== undefined) ? Math.round(imgCols * cw) : bitmap.width + xOffset;
         const canvasH = (cmd.rows !== undefined) ? Math.round(imgRows * ch) : bitmap.height + yOffset;
         const offsetCanvas = ImageRenderer.createCanvas(window.document, canvasW, canvasH);
-        const offsetCtx = offsetCanvas.getContext('2d');
+        const offsetCtx = offsetCanvas.getContext('2d', { colorSpace: this._coreTerminal._core.optionsService.rawOptions.colorSpace });
         if (!offsetCtx) {
           throw new Error('Failed to create offset canvas context');
         }
@@ -702,7 +702,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
           img.addEventListener('load', () => {
             URL.revokeObjectURL(url);
             const canvas = ImageRenderer.createCanvas(window.document, img.width, img.height);
-            canvas.getContext('2d')?.drawImage(img, 0, 0);
+            canvas.getContext('2d', { colorSpace: this._coreTerminal._core.optionsService.rawOptions.colorSpace })?.drawImage(img, 0, 0);
             createImageBitmap(canvas).then(resolve).catch(reject);
           });
           img.addEventListener('error', () => {

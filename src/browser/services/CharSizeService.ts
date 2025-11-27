@@ -111,7 +111,7 @@ class TextMetricsMeasureStrategy extends BaseMeasureStategy {
     super();
     // This will throw if any required API is not supported
     this._canvas = new OffscreenCanvas(100, 100);
-    this._ctx = this._canvas.getContext('2d')!;
+    this._ctx = this._canvas.getContext('2d', { colorSpace: this._optionsService.rawOptions.colorSpace })!;
     const a = this._ctx.measureText('W');
     if (!('width' in a && 'fontBoundingBoxAscent' in a && 'fontBoundingBoxDescent' in a)) {
       throw new Error('Required font metrics not supported');

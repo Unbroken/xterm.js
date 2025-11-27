@@ -8,7 +8,7 @@ import { DIM_OPACITY, TEXT_BASELINE } from './Constants';
 import { tryDrawCustomGlyph } from './customGlyphs/CustomGlyphRasterizer';
 import { computeNextVariantOffset, treatGlyphAsBackgroundColor, isPowerlineGlyph, isRestrictedPowerlineGlyph, throwIfFalsy } from 'browser/renderer/shared/RendererUtils';
 import { IBoundingBox, ICharAtlasConfig, IRasterizedGlyph, ITextureAtlas } from './Types';
-import { NULL_COLOR, channels, color, rgba } from 'common/Color';
+import { NULL_COLOR, channels, color, rgba, toCssColor } from 'common/Color';
 import { FourKeyMap } from 'common/MultiKeyMap';
 import { IdleTaskQueue } from 'common/TaskQueue';
 import { IColor } from 'common/Types';
@@ -99,7 +99,8 @@ export class TextureAtlas implements ITextureAtlas {
     );
     this._tmpCtx = throwIfFalsy(this._tmpCanvas.getContext('2d', {
       alpha: this._config.allowTransparency,
-      willReadFrequently: true
+      willReadFrequently: true,
+      colorSpace: this._config.colorSpace
     }));
   }
 
@@ -209,7 +210,7 @@ export class TextureAtlas implements ITextureAtlas {
     }
 
     // All new atlas pages are created small as they are highly dynamic
-    const newPage = new AtlasPage(this._document, this._textureSize);
+    const newPage = new AtlasPage(this._document, this._textureSize, undefined, this._config.colorSpace);
     this._pages.push(newPage);
     this._activePages.push(newPage);
     this._onAddTextureAtlasCanvas.fire(newPage.canvas);
@@ -218,7 +219,7 @@ export class TextureAtlas implements ITextureAtlas {
 
   private _mergePages(mergingPages: AtlasPage[], mergedPageIndex: number): AtlasPage {
     const mergedSize = mergingPages[0].canvas.width * 2;
-    const mergedPage = new AtlasPage(this._document, mergedSize, mergingPages);
+    const mergedPage = new AtlasPage(this._document, mergedSize, mergingPages, this._config.colorSpace);
     for (const [i, p] of mergingPages.entries()) {
       const xOffset = i * p.canvas.width % mergedSize;
       const yOffset = Math.floor(i / 2) * p.canvas.height;
@@ -504,7 +505,7 @@ export class TextureAtlas implements ITextureAtlas {
     // Use a 'copy' composite operation to clear any existing glyph out of _tmpCtxWithAlpha,
     // regardless of transparency in backgroundColor
     this._tmpCtx.globalCompositeOperation = 'copy';
-    this._tmpCtx.fillStyle = backgroundColor.css;
+    this._tmpCtx.fillStyle = toCssColor(backgroundColor.css, this._config.colorSpace);
     this._tmpCtx.fillRect(0, 0, this._tmpCanvas.width, this._tmpCanvas.height);
     this._tmpCtx.globalCompositeOperation = 'source-over';
 
@@ -518,7 +519,7 @@ export class TextureAtlas implements ITextureAtlas {
     const powerlineGlyph = chars.length === 1 && isPowerlineGlyph(chars.charCodeAt(0));
     const restrictedPowerlineGlyph = chars.length === 1 && isRestrictedPowerlineGlyph(chars.charCodeAt(0));
     const foregroundColor = this._getForegroundColor(bg, bgColorMode, bgColor, fg, fgColorMode, fgColor, inverse, dim, bold, treatGlyphAsBackgroundColor(chars.charCodeAt(0)));
-    this._tmpCtx.fillStyle = foregroundColor.css;
+    this._tmpCtx.fillStyle = toCssColor(foregroundColor.css, this._config.colorSpace);
 
     // For powerline glyphs left/top padding is excluded (https://github.com/microsoft/vscode/issues/120129)
     const padding = restrictedPowerlineGlyph ? 0 : TMP_CANVAS_GLYPH_PADDING * 2;
@@ -527,7 +528,7 @@ export class TextureAtlas implements ITextureAtlas {
     let customGlyph = false;
     if (this._config.customGlyphs !== false) {
       const variantOffset = this._workAttributeData.getUnderlineVariantOffset();
-      customGlyph = tryDrawCustomGlyph(this._tmpCtx, chars, padding, padding, this._config.deviceCellWidth, this._config.deviceCellHeight, this._config.deviceCharWidth, this._config.deviceCharHeight, this._config.fontSize, this._config.devicePixelRatio, backgroundColor.css, variantOffset);
+      customGlyph = tryDrawCustomGlyph(this._tmpCtx, chars, padding, padding, this._config.deviceCellWidth, this._config.deviceCellHeight, this._config.deviceCharWidth, this._config.deviceCharHeight, this._config.fontSize, this._config.devicePixelRatio, backgroundColor.css, variantOffset, this._config.colorSpace);
     }
 
     // Whether to clear pixels based on a threshold difference between the glyph color and the
@@ -562,7 +563,7 @@ export class TextureAtlas implements ITextureAtlas {
         if (this._config.drawBoldTextInBrightColors && this._workAttributeData.isBold() && fg < 8) {
           fg += 8;
         }
-        this._tmpCtx.strokeStyle = this._getColorFromAnsiIndex(fg).css;
+        this._tmpCtx.strokeStyle = toCssColor(this._getColorFromAnsiIndex(fg).css, this._config.colorSpace);
       }
       this._tmpCtx.fillStyle = this._tmpCtx.strokeStyle;
 
@@ -692,7 +693,7 @@ export class TextureAtlas implements ITextureAtlas {
             clipRegion.rect(xLeft, yTop - Math.ceil(lineWidth / 2), this._config.deviceCellWidth * chWidth, yBot - yTop + Math.ceil(lineWidth / 2));
             this._tmpCtx.clip(clipRegion);
             this._tmpCtx.lineWidth = this._config.devicePixelRatio * 3;
-            this._tmpCtx.strokeStyle = backgroundColor.css;
+            this._tmpCtx.strokeStyle = toCssColor(backgroundColor.css, this._config.colorSpace);
             this._tmpCtx.strokeText(chars, padding, padding + this._config.deviceCharHeight);
             this._tmpCtx.restore();
           }
@@ -724,7 +725,7 @@ export class TextureAtlas implements ITextureAtlas {
       if (isBeyondCellBounds) {
         for (let offset = 1; offset <= 5; offset++) {
           this._tmpCtx.save();
-          this._tmpCtx.fillStyle = backgroundColor.css;
+          this._tmpCtx.fillStyle = toCssColor(backgroundColor.css, this._config.colorSpace);
           this._tmpCtx.fillRect(0, 0, this._tmpCanvas.width, this._tmpCanvas.height);
           this._tmpCtx.restore();
           this._tmpCtx.fillText(chars, padding, padding + this._config.deviceCharHeight - offset);
@@ -812,7 +813,7 @@ export class TextureAtlas implements ITextureAtlas {
       // Create a new page for oversized glyphs as they come up
       if (rasterizedGlyph.size.x > this._textureSize) {
         if (!this._overflowSizePage) {
-          this._overflowSizePage = new AtlasPage(this._document, this._config.deviceMaxTextureSize);
+          this._overflowSizePage = new AtlasPage(this._document, this._config.deviceMaxTextureSize, undefined, this._config.colorSpace);
           this.pages.push(this._overflowSizePage);
 
           // Request the model to be cleared to refresh all texture pages.
@@ -1071,7 +1072,8 @@ class AtlasPage {
   constructor(
     document: Document,
     size: number,
-    sourcePages?: AtlasPage[]
+    sourcePages?: AtlasPage[],
+    colorSpace?: 'srgb' | 'display-p3'
   ) {
     if (sourcePages) {
       for (const p of sourcePages) {
@@ -1083,7 +1085,7 @@ class AtlasPage {
     // The canvas needs alpha because we use clearColor to convert the background color to alpha.
     // It might also contain some characters with transparent backgrounds if allowTransparency is
     // set.
-    this.ctx = throwIfFalsy(this.canvas.getContext('2d', { alpha: true }));
+    this.ctx = throwIfFalsy(this.canvas.getContext('2d', { alpha: true, colorSpace }));
   }
 
   public clear(): void {
