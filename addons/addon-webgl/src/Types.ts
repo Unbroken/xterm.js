@@ -54,6 +54,7 @@ export interface ICharAtlasConfig {
   drawBoldTextInBrightColors: boolean;
   minimumContrastRatio: number;
   colors: IColorSet;
+  colorSpace?: 'srgb' | 'display-p3';
 }
 
 export interface ITextureAtlas extends IDisposable {

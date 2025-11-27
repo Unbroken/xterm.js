@@ -71,8 +71,8 @@ export namespace color {
     return (color.rgba & 0xFF) === 0xFF;
   }
 
-  export function ensureContrastRatio(bg: IColor, fg: IColor, ratio: number): IColor | undefined {
-    const result = rgba.ensureContrastRatio(bg.rgba, fg.rgba, ratio);
+  export function ensureContrastRatio(bg: IColor, fg: IColor, ratio: number, colorSpace?: 'srgb' | 'display-p3'): IColor | undefined {
+    const result = rgba.ensureContrastRatio(bg.rgba, fg.rgba, ratio, colorSpace);
     if (!result) {
       return undefined;
     }
@@ -251,13 +251,15 @@ export namespace rgb {
    * Gets the relative luminance of an RGB color, this is useful in determining the contrast ratio
    * between two colors.
    * @param rgb The color to use.
+   * @param colorSpace The color space the channels are in, which the terminal renders them in.
    * @see https://www.w3.org/TR/WCAG20/#relativeluminancedef
    */
-  export function relativeLuminance(rgb: number): number {
+  export function relativeLuminance(rgb: number, colorSpace?: 'srgb' | 'display-p3'): number {
     return relativeLuminance2(
       (rgb >> 16) & 0xFF,
       (rgb >> 8 ) & 0xFF,
-      (rgb      ) & 0xFF);
+      (rgb      ) & 0xFF,
+      colorSpace);
   }
 
   /**
@@ -266,15 +268,20 @@ export namespace rgb {
    * @param r The red channel (0x00 to 0xFF).
    * @param g The green channel (0x00 to 0xFF).
    * @param b The blue channel (0x00 to 0xFF).
+   * @param colorSpace The color space the channels are in. Display P3 has the transfer function of
+   * sRGB, with wider primaries, which weigh the channels differently.
    * @see https://www.w3.org/TR/WCAG20/#relativeluminancedef
    */
-  export function relativeLuminance2(r: number, g: number, b: number): number {
+  export function relativeLuminance2(r: number, g: number, b: number, colorSpace?: 'srgb' | 'display-p3'): number {
     const rs = r / 255;
     const gs = g / 255;
     const bs = b / 255;
     const rr = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
     const rg = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
     const rb = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    if (colorSpace === 'display-p3') {
+      return rr * 0.2289746 + rg * 0.6917385 + rb * 0.0792869;
+    }
     return rr * 0.2126 + rg * 0.7152 + rb * 0.0722;
   }
 }
@@ -312,27 +319,28 @@ export namespace rgba {
    * @param bgRgba The background color in rgba format.
    * @param fgRgba The foreground color in rgba format.
    * @param ratio The contrast ratio to achieve.
+   * @param colorSpace The color space the terminal renders the colors in.
    */
-  export function ensureContrastRatio(bgRgba: number, fgRgba: number, ratio: number): number | undefined {
-    const bgL = rgb.relativeLuminance(bgRgba >> 8);
-    const fgL = rgb.relativeLuminance(fgRgba >> 8);
+  export function ensureContrastRatio(bgRgba: number, fgRgba: number, ratio: number, colorSpace?: 'srgb' | 'display-p3'): number | undefined {
+    const bgL = rgb.relativeLuminance(bgRgba >> 8, colorSpace);
+    const fgL = rgb.relativeLuminance(fgRgba >> 8, colorSpace);
     const cr = contrastRatio(bgL, fgL);
     if (cr < ratio) {
       if (fgL < bgL) {
-        const resultA = reduceLuminance(bgRgba, fgRgba, ratio);
-        const resultARatio = contrastRatio(bgL, rgb.relativeLuminance(resultA >> 8));
+        const resultA = reduceLuminance(bgRgba, fgRgba, ratio, colorSpace);
+        const resultARatio = contrastRatio(bgL, rgb.relativeLuminance(resultA >> 8, colorSpace));
         if (resultARatio < ratio) {
-          const resultB = increaseLuminance(bgRgba, fgRgba, ratio);
-          const resultBRatio = contrastRatio(bgL, rgb.relativeLuminance(resultB >> 8));
+          const resultB = increaseLuminance(bgRgba, fgRgba, ratio, colorSpace);
+          const resultBRatio = contrastRatio(bgL, rgb.relativeLuminance(resultB >> 8, colorSpace));
           return resultARatio > resultBRatio ? resultA : resultB;
         }
         return resultA;
       }
-      const resultA = increaseLuminance(bgRgba, fgRgba, ratio);
-      const resultARatio = contrastRatio(bgL, rgb.relativeLuminance(resultA >> 8));
+      const resultA = increaseLuminance(bgRgba, fgRgba, ratio, colorSpace);
+      const resultARatio = contrastRatio(bgL, rgb.relativeLuminance(resultA >> 8, colorSpace));
       if (resultARatio < ratio) {
-        const resultB = reduceLuminance(bgRgba, fgRgba, ratio);
-        const resultBRatio = contrastRatio(bgL, rgb.relativeLuminance(resultB >> 8));
+        const resultB = reduceLuminance(bgRgba, fgRgba, ratio, colorSpace);
+        const resultBRatio = contrastRatio(bgL, rgb.relativeLuminance(resultB >> 8, colorSpace));
         return resultARatio > resultBRatio ? resultA : resultB;
       }
       return resultA;
@@ -340,7 +348,7 @@ export namespace rgba {
     return undefined;
   }
 
-  export function reduceLuminance(bgRgba: number, fgRgba: number, ratio: number): number {
+  export function reduceLuminance(bgRgba: number, fgRgba: number, ratio: number, colorSpace?: 'srgb' | 'display-p3'): number {
     // This is a naive but fast approach to reducing luminance as converting to
     // HSL and back is expensive
     const bgR = (bgRgba >> 24) & 0xFF;
@@ -349,18 +357,18 @@ export namespace rgba {
     let fgR = (fgRgba >> 24) & 0xFF;
     let fgG = (fgRgba >> 16) & 0xFF;
     let fgB = (fgRgba >>  8) & 0xFF;
-    let cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB), rgb.relativeLuminance2(bgR, bgG, bgB));
+    let cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB, colorSpace), rgb.relativeLuminance2(bgR, bgG, bgB, colorSpace));
     while (cr < ratio && (fgR > 0 || fgG > 0 || fgB > 0)) {
       // Reduce by 10% until the ratio is hit
       fgR -= Math.max(0, Math.ceil(fgR * 0.1));
       fgG -= Math.max(0, Math.ceil(fgG * 0.1));
       fgB -= Math.max(0, Math.ceil(fgB * 0.1));
-      cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB), rgb.relativeLuminance2(bgR, bgG, bgB));
+      cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB, colorSpace), rgb.relativeLuminance2(bgR, bgG, bgB, colorSpace));
     }
     return (fgR << 24 | fgG << 16 | fgB << 8 | 0xFF) >>> 0;
   }
 
-  export function increaseLuminance(bgRgba: number, fgRgba: number, ratio: number): number {
+  export function increaseLuminance(bgRgba: number, fgRgba: number, ratio: number, colorSpace?: 'srgb' | 'display-p3'): number {
     // This is a naive but fast approach to increasing luminance as converting to
     // HSL and back is expensive
     const bgR = (bgRgba >> 24) & 0xFF;
@@ -369,13 +377,13 @@ export namespace rgba {
     let fgR = (fgRgba >> 24) & 0xFF;
     let fgG = (fgRgba >> 16) & 0xFF;
     let fgB = (fgRgba >>  8) & 0xFF;
-    let cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB), rgb.relativeLuminance2(bgR, bgG, bgB));
+    let cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB, colorSpace), rgb.relativeLuminance2(bgR, bgG, bgB, colorSpace));
     while (cr < ratio && (fgR < 0xFF || fgG < 0xFF || fgB < 0xFF)) {
       // Increase by 10% until the ratio is hit
       fgR = Math.min(0xFF, fgR + Math.ceil((255 - fgR) * 0.1));
       fgG = Math.min(0xFF, fgG + Math.ceil((255 - fgG) * 0.1));
       fgB = Math.min(0xFF, fgB + Math.ceil((255 - fgB) * 0.1));
-      cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB), rgb.relativeLuminance2(bgR, bgG, bgB));
+      cr = contrastRatio(rgb.relativeLuminance2(fgR, fgG, fgB, colorSpace), rgb.relativeLuminance2(bgR, bgG, bgB, colorSpace));
     }
     return (fgR << 24 | fgG << 16 | fgB << 8 | 0xFF) >>> 0;
   }
@@ -388,6 +396,61 @@ export namespace rgba {
 export function toPaddedHex(c: number): string {
   const s = c.toString(16);
   return s.length < 2 ? '0' + s : s;
+}
+
+/**
+ * Converts a CSS color string to display-p3 format if needed.
+ * @param cssColor The CSS color string (e.g., '#rrggbb', 'rgba(...)')
+ * @param colorSpace The target color space
+ * @returns The color in appropriate format for the color space
+ */
+export function toCssColor(cssColor: string, colorSpace?: 'srgb' | 'display-p3'): string {
+  // Pass through if srgb or no colorSpace specified
+  if (!colorSpace || colorSpace === 'srgb') {
+    return cssColor;
+  }
+
+  // Only convert hex format colors
+  if (!cssColor.startsWith('#')) {
+    return cssColor;
+  }
+
+  // Parse hex color
+  let r: number;
+  let g: number;
+  let b: number;
+  let a: number = 1;
+  if (cssColor.length === 4) {
+    // #rgb
+    r = parseInt(cssColor[1] + cssColor[1], 16) / 255;
+    g = parseInt(cssColor[2] + cssColor[2], 16) / 255;
+    b = parseInt(cssColor[3] + cssColor[3], 16) / 255;
+  } else if (cssColor.length === 5) {
+    // #rgba
+    r = parseInt(cssColor[1] + cssColor[1], 16) / 255;
+    g = parseInt(cssColor[2] + cssColor[2], 16) / 255;
+    b = parseInt(cssColor[3] + cssColor[3], 16) / 255;
+    a = parseInt(cssColor[4] + cssColor[4], 16) / 255;
+  } else if (cssColor.length === 7) {
+    // #rrggbb
+    r = parseInt(cssColor.slice(1, 3), 16) / 255;
+    g = parseInt(cssColor.slice(3, 5), 16) / 255;
+    b = parseInt(cssColor.slice(5, 7), 16) / 255;
+  } else if (cssColor.length === 9) {
+    // #rrggbbaa
+    r = parseInt(cssColor.slice(1, 3), 16) / 255;
+    g = parseInt(cssColor.slice(3, 5), 16) / 255;
+    b = parseInt(cssColor.slice(5, 7), 16) / 255;
+    a = parseInt(cssColor.slice(7, 9), 16) / 255;
+  } else {
+    return cssColor; // Unknown format, pass through
+  }
+
+  // Return display-p3 format
+  if (a === 1) {
+    return `color(display-p3 ${r} ${g} ${b})`;
+  }
+  return `color(display-p3 ${r} ${g} ${b} / ${a})`;
 }
 
 /**

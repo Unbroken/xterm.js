@@ -5,7 +5,8 @@
 
 import { SixelImageStorage } from './SixelImageStorage';
 import { IDcsHandler, IParams, IImageAddonOptions, ITerminalExt, AttributeData, IResetHandler, ReadonlyColorSet } from './Types';
-import { toRGBA8888, BIG_ENDIAN, PALETTE_ANSI_256, PALETTE_VT340_COLOR } from 'sixel/lib/Colors';
+import { toRGBA8888, fromRGBA8888, BIG_ENDIAN, PALETTE_ANSI_256, PALETTE_VT340_COLOR } from 'sixel/lib/Colors';
+import { toCssColor } from 'common/Color';
 import { RGBA8888 } from 'sixel/lib/Types';
 import { ImageRenderer } from './ImageRenderer';
 
@@ -23,6 +24,12 @@ export class SixelHandler implements IDcsHandler, IResetHandler {
   private _size = 0;
   private _aborted = false;
   private _dec: Decoder | undefined;
+  /**
+   * The background that an opaque image fills its unpainted pixels with, when the terminal renders
+   * in a color space other than sRGB: the decoder leaves them transparent, and the image is drawn
+   * over the background in the terminal's color space.
+   */
+  private _backgroundFill: RGBA8888 | undefined;
 
   constructor(
     private readonly _opts: IImageAddonOptions,
@@ -58,7 +65,11 @@ export class SixelHandler implements IDcsHandler, IResetHandler {
       const fillColor = params.params[1] === 1 ? 0 : extractActiveBg(
         this._coreTerminal._core._inputHandler._curAttrData,
         this._coreTerminal._core._themeService?.colors);
-      this._dec.init(fillColor, null, this._opts.sixelPaletteLimit);
+      // The image's own colors are sRGB, but the terminal renders its background's bytes in its
+      // color space, so the background is drawn separately
+      const colorSpace = this._coreTerminal._core.optionsService.rawOptions.colorSpace;
+      this._backgroundFill = fillColor && colorSpace && colorSpace !== 'srgb' ? fillColor : undefined;
+      this._dec.init(this._backgroundFill ? 0 : fillColor, null, this._opts.sixelPaletteLimit);
     }
   }
 
@@ -98,8 +109,20 @@ export class SixelHandler implements IDcsHandler, IResetHandler {
       return true;
     }
 
+    const colorSpace = this._coreTerminal._core.optionsService.rawOptions.colorSpace;
     const canvas = ImageRenderer.createCanvas(undefined, width, height);
-    canvas.getContext('2d')?.putImageData(new ImageData(this._dec.data8 as Uint8ClampedArray<ArrayBuffer>, width, height), 0, 0);
+    const ctx = canvas.getContext('2d', { colorSpace });
+    const imageData = new ImageData(this._dec.data8 as Uint8ClampedArray<ArrayBuffer>, width, height);
+    if (ctx && this._backgroundFill) {
+      const [r, g, b, a] = fromRGBA8888(this._backgroundFill);
+      ctx.fillStyle = toCssColor(`#${[r, g, b, a].map(channel => channel.toString(16).padStart(2, '0')).join('')}`, colorSpace);
+      ctx.fillRect(0, 0, width, height);
+      const image = ImageRenderer.createCanvas(undefined, width, height);
+      image.getContext('2d')?.putImageData(imageData, 0, 0);
+      ctx.drawImage(image, 0, 0);
+    } else {
+      ctx?.putImageData(imageData, 0, 0);
+    }
     if (this._dec.memoryUsage > MEM_PERMA_LIMIT) {
       this._dec.release();
     }

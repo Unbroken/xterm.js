@@ -376,6 +376,23 @@ describe('Color', () => {
       });
     });
     describe('ensureContrastRatio', () => {
+      it('should measure the contrast in the color space the colors are rendered in', () => {
+        // Green on red meets 4.5 in sRGB, but not as Display P3 colors, whose green weighs less
+        const bg = 0xb50000ff;
+        const fg = 0x00ef00ff;
+        const p3 = rgba.ensureContrastRatio(bg, fg, 4.5, 'display-p3');
+        assert.deepStrictEqual({
+          srgbRatio: Math.round(contrastRatio(rgb.relativeLuminance(bg >> 8), rgb.relativeLuminance(fg >> 8)) * 100) / 100,
+          srgb: rgba.ensureContrastRatio(bg, fg, 4.5),
+          p3Ratio: Math.round(contrastRatio(rgb.relativeLuminance(bg >> 8, 'display-p3'), rgb.relativeLuminance(fg >> 8, 'display-p3')) * 100) / 100,
+          p3Adjusted: p3 !== undefined && contrastRatio(rgb.relativeLuminance(bg >> 8, 'display-p3'), rgb.relativeLuminance(p3 >> 8, 'display-p3')) >= 4.5
+        }, {
+          srgbRatio: 4.5,
+          srgb: undefined,
+          p3Ratio: 4.15,
+          p3Adjusted: true
+        });
+      });
       it('should return undefined if the color already meets the contrast ratio (black bg)', () => {
         assert.equal(rgba.ensureContrastRatio(0x000000ff, 0x606060ff, 1), undefined);
         assert.equal(rgba.ensureContrastRatio(0x000000ff, 0x606060ff, 2), undefined);

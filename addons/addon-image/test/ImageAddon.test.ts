@@ -436,6 +436,57 @@ test.describe('ImageAddon', () => {
     }
   });
 
+  test.describe('color spaces', () => {
+    test('opaque sixel fills unpainted pixels with the background in the terminal\'s color space', async () => {
+      const result = await ctx.page.evaluate(async () => {
+        const term = (window as any).term;
+        const write = (data: string): Promise<void> => new Promise(resolve => term.write(data, resolve));
+        const theme = term.options.theme;
+        term.options.colorSpace = 'display-p3';
+        term.options.theme = { ...theme, background: '#ff0000' };
+        try {
+          // 4x6 opaque image (P2=0) that paints only its first 2 columns, in sRGB blue
+          await write('\x1bP0;0q"1;1;4;6#1;2;0;0;100#1!2~\x1b\\');
+          const image = [...(window as any).imageAddon._storage._images.values()][0].orig as HTMLCanvasElement;
+          const pixel = (x: number): number[] => [...image.getContext('2d', { colorSpace: 'display-p3' })!.getImageData(x, 0, 1, 1, { colorSpace: 'display-p3' }).data];
+          // The sRGB blue as a Display P3 canvas has it
+          const reference = document.createElement('canvas');
+          reference.width = reference.height = 1;
+          const referenceContext = reference.getContext('2d', { colorSpace: 'display-p3' })!;
+          referenceContext.putImageData(new ImageData(new Uint8ClampedArray([0, 0, 255, 255]), 1, 1), 0, 0);
+          return {
+            painted: pixel(0).join() === [...referenceContext.getImageData(0, 0, 1, 1, { colorSpace: 'display-p3' }).data].join(),
+            unpainted: pixel(3)
+          };
+        } finally {
+          term.options.colorSpace = 'srgb';
+          term.options.theme = theme;
+        }
+      });
+      deepStrictEqual(result, { painted: true, unpainted: [255, 0, 0, 255] });
+    });
+    test('opaque sixel keeps the alpha of a translucent background in the terminal\'s color space', async () => {
+      const unpainted = await ctx.page.evaluate(async () => {
+        const term = (window as any).term;
+        const write = (data: string): Promise<void> => new Promise(resolve => term.write(data, resolve));
+        const theme = term.options.theme;
+        term.options.allowTransparency = true;
+        term.options.colorSpace = 'display-p3';
+        term.options.theme = { ...theme, background: '#ff000080' };
+        try {
+          await write('\x1bP0;0q"1;1;4;6#1;2;0;0;100#1!2~\x1b\\');
+          const image = [...(window as any).imageAddon._storage._images.values()][0].orig as HTMLCanvasElement;
+          return [...image.getContext('2d', { colorSpace: 'display-p3' })!.getImageData(3, 0, 1, 1, { colorSpace: 'display-p3' }).data][3];
+        } finally {
+          term.options.colorSpace = 'srgb';
+          term.options.theme = theme;
+          term.options.allowTransparency = false;
+        }
+      });
+      strictEqual(unpainted, 128);
+    });
+  });
+
   test.describe('text overwrite removes tiles', () => {
     test('sixel', async () => {
       await assertTextClearsTiles(SIXEL_SEQ_0);
