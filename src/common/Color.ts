@@ -391,6 +391,58 @@ export function toPaddedHex(c: number): string {
 }
 
 /**
+ * Converts a CSS color string to display-p3 format if needed.
+ * @param cssColor The CSS color string (e.g., '#rrggbb', 'rgba(...)')
+ * @param colorSpace The target color space
+ * @returns The color in appropriate format for the color space
+ */
+export function toCssColor(cssColor: string, colorSpace?: 'srgb' | 'display-p3'): string {
+  // Pass through if srgb or no colorSpace specified
+  if (!colorSpace || colorSpace === 'srgb') {
+    return cssColor;
+  }
+
+  // Only convert hex format colors
+  if (!cssColor.startsWith('#')) {
+    return cssColor;
+  }
+
+  // Parse hex color
+  let r: number, g: number, b: number, a: number = 1;
+  if (cssColor.length === 4) {
+    // #rgb
+    r = parseInt(cssColor[1] + cssColor[1], 16) / 255;
+    g = parseInt(cssColor[2] + cssColor[2], 16) / 255;
+    b = parseInt(cssColor[3] + cssColor[3], 16) / 255;
+  } else if (cssColor.length === 5) {
+    // #rgba
+    r = parseInt(cssColor[1] + cssColor[1], 16) / 255;
+    g = parseInt(cssColor[2] + cssColor[2], 16) / 255;
+    b = parseInt(cssColor[3] + cssColor[3], 16) / 255;
+    a = parseInt(cssColor[4] + cssColor[4], 16) / 255;
+  } else if (cssColor.length === 7) {
+    // #rrggbb
+    r = parseInt(cssColor.slice(1, 3), 16) / 255;
+    g = parseInt(cssColor.slice(3, 5), 16) / 255;
+    b = parseInt(cssColor.slice(5, 7), 16) / 255;
+  } else if (cssColor.length === 9) {
+    // #rrggbbaa
+    r = parseInt(cssColor.slice(1, 3), 16) / 255;
+    g = parseInt(cssColor.slice(3, 5), 16) / 255;
+    b = parseInt(cssColor.slice(5, 7), 16) / 255;
+    a = parseInt(cssColor.slice(7, 9), 16) / 255;
+  } else {
+    return cssColor; // Unknown format, pass through
+  }
+
+  // Return display-p3 format
+  if (a === 1) {
+    return `color(display-p3 ${r} ${g} ${b})`;
+  }
+  return `color(display-p3 ${r} ${g} ${b} / ${a})`;
+}
+
+/**
  * Gets the contrast ratio between two relative luminance values.
  * @param l1 The first relative luminance.
  * @param l2 The first relative luminance.

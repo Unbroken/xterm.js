@@ -48,7 +48,8 @@ export function generateConfig(deviceCellWidth: number, deviceCellHeight: number
     allowTransparency: options.allowTransparency,
     drawBoldTextInBrightColors: options.drawBoldTextInBrightColors,
     minimumContrastRatio: options.minimumContrastRatio,
-    colors: clonedColors
+    colors: clonedColors,
+    colorSpace: options.colorSpace
   };
 }
 
@@ -72,7 +73,8 @@ export function configEquals(a: ICharAtlasConfig, b: ICharAtlasConfig): boolean 
       a.drawBoldTextInBrightColors === b.drawBoldTextInBrightColors &&
       a.minimumContrastRatio === b.minimumContrastRatio &&
       a.colors.foreground.rgba === b.colors.foreground.rgba &&
-      a.colors.background.rgba === b.colors.background.rgba;
+      a.colors.background.rgba === b.colors.background.rgba &&
+      a.colorSpace === b.colorSpace;
 }
 
 export function is256Color(colorCode: number): boolean {

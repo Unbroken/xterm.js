@@ -8,7 +8,7 @@ import { INVERTED_DEFAULT_COLOR } from 'browser/renderer/shared/Constants';
 import { WHITESPACE_CELL_CHAR, Attributes } from 'common/buffer/Constants';
 import { CellData } from 'common/buffer/CellData';
 import { ICoreService, IDecorationService, IOptionsService } from 'common/services/Services';
-import { channels, color } from 'common/Color';
+import { channels, color, toCssColor } from 'common/Color';
 import { ICharacterJoinerService, ICoreBrowserService, IThemeService } from 'browser/services/Services';
 import { JoinedCellData } from 'browser/services/CharacterJoinerService';
 import { treatGlyphAsBackgroundColor } from 'browser/renderer/shared/RendererUtils';
@@ -410,7 +410,7 @@ export class DomRendererRowFactory {
           break;
         case Attributes.CM_RGB:
           resolvedBg = channels.toColor(bg >> 16, bg >> 8 & 0xFF, bg & 0xFF);
-          this._addStyle(charElement, `background-color:#${(bg >>> 0).toString(16).padStart(6, '0')}`);
+          this._addStyle(charElement, `background-color:${toCssColor(`#${(bg >>> 0).toString(16).padStart(6, '0')}`, this._optionsService.rawOptions.colorSpace)}`);
           break;
         case Attributes.CM_DEFAULT:
         default:
@@ -447,7 +447,7 @@ export class DomRendererRowFactory {
             (fg      ) & 0xFF
           );
           if (!this._applyMinimumContrast(charElement, resolvedBg, color, cell, bgOverride, fgOverride)) {
-            this._addStyle(charElement, `color:#${fg.toString(16).padStart(6, '0')}`);
+            this._addStyle(charElement, `color:${toCssColor(`#${fg.toString(16).padStart(6, '0')}`, this._optionsService.rawOptions.colorSpace)}`);
           }
           break;
         case Attributes.CM_DEFAULT:
@@ -512,7 +512,7 @@ export class DomRendererRowFactory {
     }
 
     if (adjustedColor) {
-      this._addStyle(element, `color:${adjustedColor.css}`);
+      this._addStyle(element, `color:${toCssColor(adjustedColor.css, this._optionsService.rawOptions.colorSpace)}`);
       return true;
     }
 

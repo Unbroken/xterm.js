@@ -23,14 +23,15 @@ export function tryDrawCustomGlyph(
   fontSize: number,
   devicePixelRatio: number,
   backgroundColor?: string,
-  variantOffset: number = 0
+  variantOffset: number = 0,
+  colorSpace?: 'srgb' | 'display-p3'
 ): boolean {
   const unifiedCharDefinition = customGlyphDefinitions[c];
   if (unifiedCharDefinition) {
     // Normalize to array for uniform handling
     const parts = Array.isArray(unifiedCharDefinition) ? unifiedCharDefinition : [unifiedCharDefinition];
     for (const part of parts) {
-      drawDefinitionPart(ctx, part, xOffset, yOffset, deviceCellWidth, deviceCellHeight, deviceCharWidth, deviceCharHeight, fontSize, devicePixelRatio, backgroundColor, variantOffset);
+      drawDefinitionPart(ctx, part, xOffset, yOffset, deviceCellWidth, deviceCellHeight, deviceCharWidth, deviceCharHeight, fontSize, devicePixelRatio, backgroundColor, variantOffset, colorSpace);
     }
     return true;
   }
@@ -50,7 +51,8 @@ function drawDefinitionPart(
   fontSize: number,
   devicePixelRatio: number,
   backgroundColor?: string,
-  variantOffset: number = 0
+  variantOffset: number = 0,
+  colorSpace?: 'srgb' | 'display-p3'
 ): void {
   // Handle scaleType - adjust dimensions and offset when scaling to character area
   let drawWidth = deviceCellWidth;
@@ -76,7 +78,7 @@ function drawDefinitionPart(
       drawBlockVectorChar(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight);
       break;
     case CustomGlyphDefinitionType.BLOCK_PATTERN:
-      drawPatternChar(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight, variantOffset);
+      drawPatternChar(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight, variantOffset, colorSpace);
       break;
     case CustomGlyphDefinitionType.PATH_FUNCTION:
       drawPathFunctionCharacter(ctx, part.data, drawXOffset, drawYOffset, drawWidth, drawHeight, devicePixelRatio, part.strokeWidth);
@@ -440,7 +442,8 @@ function drawPatternChar(
   yOffset: number,
   deviceCellWidth: number,
   deviceCellHeight: number,
-  variantOffset: number = 0
+  variantOffset: number = 0,
+  colorSpace?: 'srgb' | 'display-p3'
 ): void {
   let patternSet = cachedPatterns.get(charDefinition);
   if (!patternSet) {
@@ -458,7 +461,7 @@ function drawPatternChar(
     const tmpCanvas = ctx.canvas.ownerDocument.createElement('canvas');
     tmpCanvas.width = width;
     tmpCanvas.height = height;
-    const tmpCtx = throwIfFalsy(tmpCanvas.getContext('2d'));
+    const tmpCtx = throwIfFalsy(tmpCanvas.getContext('2d', { colorSpace }));
     const imageData = new ImageData(width, height);
 
     // Extract rgba from fillStyle
