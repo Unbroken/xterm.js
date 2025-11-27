@@ -40,6 +40,7 @@ export class WebglRenderer extends Disposable implements IRenderer {
   private _charAtlas: ITextureAtlas | undefined;
   private _devicePixelRatio: number;
   private _deviceMaxTextureSize: number;
+  private _colorSpace: 'srgb' | 'display-p3';
   private _observerDisposable = this._register(new MutableDisposable());
 
   private _model: RenderModel = new RenderModel();
@@ -89,14 +90,23 @@ export class WebglRenderer extends Disposable implements IRenderer {
     // prevent possible listeners leaking and continuing to operate after the WebglRenderer has been
     // discarded.
     this._canvas = this._coreBrowserService.mainDocument.createElement('canvas');
+    const colorSpace = this._optionsService.rawOptions.colorSpace;
+    this._colorSpace = colorSpace;
     const contextAttributes = {
       antialias: false,
       depth: false,
-      preserveDrawingBuffer
+      preserveDrawingBuffer,
+      colorSpace,
     };
     this._gl = this._canvas.getContext('webgl2', contextAttributes) as IWebGL2RenderingContext;
     if (!this._gl) {
       throw new Error('WebGL2 not supported ' + this._gl);
+    }
+
+    // Set color space for WebGL rendering if supported
+    if (colorSpace && 'drawingBufferColorSpace' in this._gl) {
+      (this._gl as any).drawingBufferColorSpace = colorSpace;
+      (this._gl as any).unpackColorSpace = colorSpace;
     }
 
     this._register(this._themeService.onChangeColors(() => this._handleColorChange()));
@@ -268,6 +278,11 @@ export class WebglRenderer extends Disposable implements IRenderer {
   }
 
   private _handleOptionsChanged(): void {
+    // colorSpace change requires recreating the WebGL context
+    if (this._colorSpace !== this._optionsService.rawOptions.colorSpace) {
+      this._onContextLoss.fire();
+      return;
+    }
     this._updateDimensions();
     this._refreshCharAtlas();
     this._updateCursorBlink();
@@ -547,10 +562,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
             lastCursorX = cursorX + cell.getWidth() - 1;
           }
           if (x >= cursorX && x <= lastCursorX &&
-              ((this._coreBrowserService.isFocused &&
+            ((this._coreBrowserService.isFocused &&
               cursorStyle === 'block') ||
               (this._coreBrowserService.isFocused === false &&
-              terminal.options.cursorInactiveStyle === 'block'))
+                terminal.options.cursorInactiveStyle === 'block'))
           ) {
             this._cellColorResolver.result.fg =
               Attributes.CM_RGB | (this._themeService.colors.cursorAccent.rgba >> 8 & Attributes.RGB_MASK);
