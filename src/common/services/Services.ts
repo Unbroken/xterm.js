@@ -267,6 +267,7 @@ export interface ITerminalOptions {
   wordSeparator?: string;
   overviewRuler?: IOverviewRulerOptions;
   scrollOnEraseInDisplay?: boolean;
+  colorSpace?: 'srgb' | 'display-p3';
 
   [key: string]: any;
   cancelEvents: boolean;

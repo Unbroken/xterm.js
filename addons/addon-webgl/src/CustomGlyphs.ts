@@ -483,7 +483,7 @@ function drawPatternChar(
     const tmpCanvas = ctx.canvas.ownerDocument.createElement('canvas');
     tmpCanvas.width = width;
     tmpCanvas.height = height;
-    const tmpCtx = throwIfFalsy(tmpCanvas.getContext('2d'));
+    const tmpCtx = throwIfFalsy(tmpCanvas.getContext('2d', { colorSpace: ctx.getContextAttributes()?.colorSpace }));
     const imageData = new ImageData(width, height);
 
     // Extract rgba from fillStyle

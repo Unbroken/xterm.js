@@ -10,6 +10,7 @@ import { ICoreBrowserService, IThemeService } from 'browser/services/Services';
 import { Disposable, toDisposable } from 'vs/base/common/lifecycle';
 import { CellData } from 'common/buffer/CellData';
 import { IOptionsService } from 'common/services/Services';
+import { toCssColor } from 'common/Color';
 import { Terminal } from '@xterm/xterm';
 import { IRenderLayer } from './Types';
 import { throwIfFalsy } from 'browser/renderer/shared/RendererUtils';
@@ -54,7 +55,7 @@ export abstract class BaseRenderLayer extends Disposable implements IRenderLayer
   }
 
   private _initCanvas(): void {
-    this._ctx = throwIfFalsy(this._canvas.getContext('2d', { alpha: this._alpha }));
+    this._ctx = throwIfFalsy(this._canvas.getContext('2d', { alpha: this._alpha, colorSpace: this._optionsService.rawOptions.colorSpace }));
     // Draw the background if this is an opaque layer
     if (!this._alpha) {
       this._clearAll();
@@ -143,7 +144,7 @@ export abstract class BaseRenderLayer extends Disposable implements IRenderLayer
     if (this._alpha) {
       this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
     } else {
-      this._ctx.fillStyle = this._themeService.colors.background.css;
+      this._ctx.fillStyle = toCssColor(this._themeService.colors.background.css, this._optionsService.rawOptions.colorSpace);
       this._ctx.fillRect(0, 0, this._canvas.width, this._canvas.height);
     }
   }
@@ -163,7 +164,7 @@ export abstract class BaseRenderLayer extends Disposable implements IRenderLayer
         width * this._deviceCellWidth,
         height * this._deviceCellHeight);
     } else {
-      this._ctx.fillStyle = this._themeService.colors.background.css;
+      this._ctx.fillStyle = toCssColor(this._themeService.colors.background.css, this._optionsService.rawOptions.colorSpace);
       this._ctx.fillRect(
         x * this._deviceCellWidth,
         y * this._deviceCellHeight,

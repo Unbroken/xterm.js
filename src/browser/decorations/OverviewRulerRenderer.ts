@@ -7,6 +7,7 @@ import { ColorZoneStore, IColorZone, IColorZoneStore } from 'browser/decorations
 import { ICoreBrowserService, IRenderService, IThemeService } from 'browser/services/Services';
 import { Disposable, toDisposable } from 'vs/base/common/lifecycle';
 import { IBufferService, IDecorationService, IOptionsService } from 'common/services/Services';
+import { toCssColor } from 'common/Color';
 
 const enum Constants {
   OVERVIEW_RULER_BORDER_WIDTH = 1
@@ -34,8 +35,8 @@ const drawX = {
 };
 
 export class OverviewRulerRenderer extends Disposable {
-  private readonly _canvas: HTMLCanvasElement;
-  private readonly _ctx: CanvasRenderingContext2D;
+  private _canvas: HTMLCanvasElement;
+  private _ctx: CanvasRenderingContext2D;
   private readonly _colorZoneStore: IColorZoneStore = new ColorZoneStore();
   private get _width(): number {
     return this._optionsService.options.overviewRuler?.width || 0;
@@ -65,7 +66,7 @@ export class OverviewRulerRenderer extends Disposable {
     this._viewportElement.parentElement?.insertBefore(this._canvas, this._viewportElement);
     this._register(toDisposable(() => this._canvas?.remove()));
 
-    const ctx = this._canvas.getContext('2d');
+    const ctx = this._canvas.getContext('2d', { colorSpace: this._optionsService.rawOptions.colorSpace });
     if (!ctx) {
       throw new Error('Ctx cannot be null');
     } else {
@@ -96,8 +97,21 @@ export class OverviewRulerRenderer extends Disposable {
 
     this._register(this._coreBrowserService.onDprChange(() => this._queueRefresh(true)));
     this._register(this._optionsService.onSpecificOptionChange('overviewRuler', () => this._queueRefresh(true)));
+    this._register(this._optionsService.onSpecificOptionChange('colorSpace', () => this._recreateCanvas()));
     this._register(this._themeService.onChangeColors(() => this._queueRefresh()));
     this._queueRefresh(true);
+  }
+
+  private _recreateCanvas(): void {
+    // Create new canvas with updated colorSpace
+    const oldCanvas = this._canvas;
+    this._canvas = oldCanvas.cloneNode() as HTMLCanvasElement;
+    const ctx = this._canvas.getContext('2d', { colorSpace: this._optionsService.rawOptions.colorSpace });
+    if (ctx) {
+      this._ctx = ctx;
+      oldCanvas.parentElement?.replaceChild(this._canvas, oldCanvas);
+      this._queueRefresh(true);
+    }
   }
 
   private _refreshDrawConstants(): void {
@@ -174,7 +188,7 @@ export class OverviewRulerRenderer extends Disposable {
   }
 
   private _renderRulerOutline(): void {
-    this._ctx.fillStyle = this._themeService.colors.overviewRulerBorder.css;
+    this._ctx.fillStyle = toCssColor(this._themeService.colors.overviewRulerBorder.css, this._optionsService.rawOptions.colorSpace);
     this._ctx.fillRect(0, 0, Constants.OVERVIEW_RULER_BORDER_WIDTH, this._canvas.height);
     if (this._optionsService.rawOptions.overviewRuler.showTopBorder) {
       this._ctx.fillRect(Constants.OVERVIEW_RULER_BORDER_WIDTH, 0, this._canvas.width - Constants.OVERVIEW_RULER_BORDER_WIDTH, Constants.OVERVIEW_RULER_BORDER_WIDTH);

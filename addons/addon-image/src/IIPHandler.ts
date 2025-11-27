@@ -115,7 +115,7 @@ export class IIPHandler implements IOscHandler, IResetHandler {
         img.addEventListener('load', () => {
           URL.revokeObjectURL(url);
           const canvas = ImageRenderer.createCanvas(window.document, w, h);
-          canvas.getContext('2d')?.drawImage(img, 0, 0, w, h);
+          canvas.getContext('2d', { colorSpace: this._coreTerminal._core.optionsService.rawOptions.colorSpace })?.drawImage(img, 0, 0, w, h);
           this._storage.addImage(canvas);
           r(true);
         });
