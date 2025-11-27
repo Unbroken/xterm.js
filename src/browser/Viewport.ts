@@ -8,6 +8,7 @@ import { ViewportConstants } from 'browser/shared/Constants';
 import { Disposable, toDisposable } from 'common/Lifecycle';
 import { IBufferService, ICoreMouseService, IOptionsService } from 'common/services/Services';
 import { CoreMouseEventType } from 'common/Types';
+import { toCssColor } from 'common/Color';
 import { addDisposableListener, scheduleAtNextAnimationFrame } from 'browser/Dom';
 import { SmoothScrollableElement } from 'browser/scrollable/scrollableElement';
 import type { IScrollableElementChangeOptions } from 'browser/scrollable/scrollableElementOptions';
@@ -72,29 +73,35 @@ export class Viewport extends Disposable {
     }));
 
     this._scrollableElement.setScrollDimensions({ height: 0, scrollHeight: 0 });
-    this._register(EventUtils.runAndSubscribe(themeService.onChangeColors, () => {
-      element.style.backgroundColor = themeService.colors.background.css;
-      this._scrollableElement.getDomNode().style.backgroundColor = themeService.colors.background.css;
-    }));
+    const updateBackgroundColor = (): void => {
+      const cssColor = toCssColor(themeService.colors.background.css, this._optionsService.rawOptions.colorSpace);
+      element.style.backgroundColor = cssColor;
+      this._scrollableElement.getDomNode().style.backgroundColor = cssColor;
+    };
+    this._register(EventUtils.runAndSubscribe(themeService.onChangeColors, updateBackgroundColor));
+    this._register(this._optionsService.onSpecificOptionChange('colorSpace', updateBackgroundColor));
     element.appendChild(this._scrollableElement.getDomNode());
     this._register(toDisposable(() => this._scrollableElement.getDomNode().remove()));
 
     this._styleElement = coreBrowserService.mainDocument.createElement('style');
     screenElement.appendChild(this._styleElement);
     this._register(toDisposable(() => this._styleElement.remove()));
-    this._register(EventUtils.runAndSubscribe(themeService.onChangeColors, () => {
+    const updateScrollbarStyles = (): void => {
+      const colorSpace = this._optionsService.rawOptions.colorSpace;
       this._styleElement.textContent = [
         `.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {`,
-        `  background: ${themeService.colors.scrollbarSliderBackground.css};`,
+        `  background: ${toCssColor(themeService.colors.scrollbarSliderBackground.css, colorSpace)};`,
         `}`,
         `.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider:hover {`,
-        `  background: ${themeService.colors.scrollbarSliderHoverBackground.css};`,
+        `  background: ${toCssColor(themeService.colors.scrollbarSliderHoverBackground.css, colorSpace)};`,
         `}`,
         `.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider.xterm-active {`,
-        `  background: ${themeService.colors.scrollbarSliderActiveBackground.css};`,
+        `  background: ${toCssColor(themeService.colors.scrollbarSliderActiveBackground.css, colorSpace)};`,
         `}`
       ].join('\n');
-    }));
+    };
+    this._register(EventUtils.runAndSubscribe(themeService.onChangeColors, updateScrollbarStyles));
+    this._register(this._optionsService.onSpecificOptionChange('colorSpace', updateScrollbarStyles));
 
     this._register(this._bufferService.onResize(() => this.queueSync()));
     this._register(this._bufferService.buffers.onBufferActivate(() => {

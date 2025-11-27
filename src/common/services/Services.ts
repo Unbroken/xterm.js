@@ -269,6 +269,7 @@ export interface ITerminalOptions {
   scrollbar?: IScrollbarOptions;
   scrollOnEraseInDisplay?: boolean;
   vtExtensions?: IVtExtensions;
+  colorSpace?: 'srgb' | 'display-p3';
 
   [key: string]: any;
   termName: string;

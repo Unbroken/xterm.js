@@ -330,6 +330,13 @@ declare module '@xterm/xterm' {
      * All features are disabled by default for security reasons.
      */
     windowOptions?: IWindowOptions;
+
+    /**
+     * The color space to use for rendering. When set to 'display-p3', the
+     * terminal will render using the Display P3 color space, which provides
+     * a wider color gamut than sRGB. The default is 'srgb'.
+     */
+    colorSpace?: 'srgb' | 'display-p3';
   }
 
   /**
