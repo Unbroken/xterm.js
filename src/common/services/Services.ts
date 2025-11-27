@@ -268,6 +268,7 @@ export interface ITerminalOptions {
   quirks?: ITerminalQuirks;
   scrollOnEraseInDisplay?: boolean;
   vtExtensions?: IVtExtensions;
+  colorSpace?: 'srgb' | 'display-p3';
 
   [key: string]: any;
   cancelEvents: boolean;

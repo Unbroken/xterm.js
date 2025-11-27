@@ -492,7 +492,7 @@ export class ImageStorage implements IDisposable {
         const orig = this._images.get(e.imageId)?.orig;
         if (window.ImageBitmap && orig instanceof ImageBitmap) {
           const canvas = ImageRenderer.createCanvas(window.document, orig.width, orig.height);
-          canvas.getContext('2d')?.drawImage(orig, 0, 0, orig.width, orig.height);
+          canvas.getContext('2d', { colorSpace: this._terminal._core.optionsService.rawOptions.colorSpace })?.drawImage(orig, 0, 0, orig.width, orig.height);
           return canvas;
         }
         return orig as HTMLCanvasElement;

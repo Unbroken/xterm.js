@@ -11,7 +11,7 @@ import { createSelectionRenderModel } from 'browser/renderer/shared/SelectionRen
 import { IRenderDimensions, IRenderer, IRequestRedrawEvent, ISelectionRenderModel } from 'browser/renderer/shared/Types';
 import { ICharSizeService, ICoreBrowserService, IThemeService } from 'browser/services/Services';
 import { ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from 'browser/Types';
-import { color } from 'common/Color';
+import { color, toCssColor } from 'common/Color';
 import { Disposable, toDisposable } from 'vs/base/common/lifecycle';
 import { IBufferService, ICoreService, IInstantiationService, IOptionsService } from 'common/services/Services';
 import { Emitter } from 'vs/base/common/event';
@@ -166,6 +166,8 @@ export class DomRenderer extends Disposable implements IRenderer {
       this._screenElement.appendChild(this._themeStyleElement);
     }
 
+    const colorSpace = this._optionsService.rawOptions.colorSpace;
+
     // Base CSS
     let styles =
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} {` +
@@ -173,7 +175,7 @@ export class DomRenderer extends Disposable implements IRenderer {
       // being delivered if the target element is replaced during the click. This happened due to
       // refresh() being called during the mousedown handler to start a selection.
       ` pointer-events: none;` +
-      ` color: ${colors.foreground.css};` +
+      ` color: ${toCssColor(colors.foreground.css, colorSpace)};` +
       ` font-family: ${this._optionsService.rawOptions.fontFamily};` +
       ` font-size: ${this._optionsService.rawOptions.fontSize}px;` +
       ` font-kerning: none;` +
@@ -181,7 +183,7 @@ export class DomRenderer extends Disposable implements IRenderer {
       `}`;
     styles +=
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .xterm-dim {` +
-      ` color: ${color.multiplyOpacity(colors.foreground, 0.5).css};` +
+      ` color: ${toCssColor(color.multiplyOpacity(colors.foreground, 0.5).css, colorSpace)};` +
       `}`;
     // Text styles
     styles +=
@@ -213,12 +215,12 @@ export class DomRenderer extends Disposable implements IRenderer {
     styles +=
       `@keyframes ${blinkAnimationBlockId} {` +
       ` 0% {` +
-      `  background-color: ${colors.cursor.css};` +
-      `  color: ${colors.cursorAccent.css};` +
+      `  background-color: ${toCssColor(colors.cursor.css, colorSpace)};` +
+      `  color: ${toCssColor(colors.cursorAccent.css, colorSpace)};` +
       ` }` +
       ` 50% {` +
       `  background-color: inherit;` +
-      `  color: ${colors.cursor.css};` +
+      `  color: ${toCssColor(colors.cursor.css, colorSpace)};` +
       ` }` +
       `}`;
     // Cursor
@@ -240,22 +242,22 @@ export class DomRenderer extends Disposable implements IRenderer {
       // however it's very hard to fix this issue and retain the blink animation without the use of
       // !important. So this edge case fails when cursor blink is on.
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_BLOCK_CLASS} {` +
-      ` background-color: ${colors.cursor.css};` +
-      ` color: ${colors.cursorAccent.css};` +
+      ` background-color: ${toCssColor(colors.cursor.css, colorSpace)};` +
+      ` color: ${toCssColor(colors.cursorAccent.css, colorSpace)};` +
       `}` +
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_BLOCK_CLASS}:not(.${RowCss.CURSOR_BLINK_CLASS}) {` +
-      ` background-color: ${colors.cursor.css} !important;` +
-      ` color: ${colors.cursorAccent.css} !important;` +
+      ` background-color: ${toCssColor(colors.cursor.css, colorSpace)} !important;` +
+      ` color: ${toCssColor(colors.cursorAccent.css, colorSpace)} !important;` +
       `}` +
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_OUTLINE_CLASS} {` +
-      ` outline: 1px solid ${colors.cursor.css};` +
+      ` outline: 1px solid ${toCssColor(colors.cursor.css, colorSpace)};` +
       ` outline-offset: -1px;` +
       `}` +
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_BAR_CLASS} {` +
-      ` box-shadow: ${this._optionsService.rawOptions.cursorWidth}px 0 0 ${colors.cursor.css} inset;` +
+      ` box-shadow: ${this._optionsService.rawOptions.cursorWidth}px 0 0 ${toCssColor(colors.cursor.css, colorSpace)} inset;` +
       `}` +
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_UNDERLINE_CLASS} {` +
-      ` border-bottom: 1px ${colors.cursor.css};` +
+      ` border-bottom: 1px ${toCssColor(colors.cursor.css, colorSpace)};` +
       ` border-bottom-style: solid;` +
       ` height: calc(100% - 1px);` +
       `}`;
@@ -270,23 +272,23 @@ export class DomRenderer extends Disposable implements IRenderer {
       `}` +
       `${this._terminalSelector}.focus .${SELECTION_CLASS} div {` +
       ` position: absolute;` +
-      ` background-color: ${colors.selectionBackgroundOpaque.css};` +
+      ` background-color: ${toCssColor(colors.selectionBackgroundOpaque.css, colorSpace)};` +
       `}` +
       `${this._terminalSelector} .${SELECTION_CLASS} div {` +
       ` position: absolute;` +
-      ` background-color: ${colors.selectionInactiveBackgroundOpaque.css};` +
+      ` background-color: ${toCssColor(colors.selectionInactiveBackgroundOpaque.css, colorSpace)};` +
       `}`;
     // Colors
     for (const [i, c] of colors.ansi.entries()) {
       styles +=
-        `${this._terminalSelector} .${FG_CLASS_PREFIX}${i} { color: ${c.css}; }` +
-        `${this._terminalSelector} .${FG_CLASS_PREFIX}${i}.${RowCss.DIM_CLASS} { color: ${color.multiplyOpacity(c, 0.5).css}; }` +
-        `${this._terminalSelector} .${BG_CLASS_PREFIX}${i} { background-color: ${c.css}; }`;
+        `${this._terminalSelector} .${FG_CLASS_PREFIX}${i} { color: ${toCssColor(c.css, colorSpace)}; }` +
+        `${this._terminalSelector} .${FG_CLASS_PREFIX}${i}.${RowCss.DIM_CLASS} { color: ${toCssColor(color.multiplyOpacity(c, 0.5).css, colorSpace)}; }` +
+        `${this._terminalSelector} .${BG_CLASS_PREFIX}${i} { background-color: ${toCssColor(c.css, colorSpace)}; }`;
     }
     styles +=
-      `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR} { color: ${color.opaque(colors.background).css}; }` +
-      `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR}.${RowCss.DIM_CLASS} { color: ${color.multiplyOpacity(color.opaque(colors.background), 0.5).css}; }` +
-      `${this._terminalSelector} .${BG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR} { background-color: ${colors.foreground.css}; }`;
+      `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR} { color: ${toCssColor(color.opaque(colors.background).css, colorSpace)}; }` +
+      `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR}.${RowCss.DIM_CLASS} { color: ${toCssColor(color.multiplyOpacity(color.opaque(colors.background), 0.5).css, colorSpace)}; }` +
+      `${this._terminalSelector} .${BG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR} { background-color: ${toCssColor(colors.foreground.css, colorSpace)}; }`;
 
     this._themeStyleElement.textContent = styles;
   }
