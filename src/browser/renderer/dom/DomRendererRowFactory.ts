@@ -9,11 +9,10 @@ import { INVERTED_DEFAULT_COLOR } from '../shared/Constants';
 import { WHITESPACE_CELL_CHAR, Attributes } from '../../../common/buffer/Constants';
 import { CellData } from '../../../common/buffer/CellData';
 import { ICoreService, IDecorationService, IOptionsService } from '../../../common/services/Services';
-import { channels, color } from '../../../common/Color';
+import { channels, color, toCssColor } from '../../../common/Color';
 import { ICharacterJoinerService, ICoreBrowserService, IThemeService } from '../../services/Services';
 import { JoinedCellData } from '../../services/CharacterJoinerService';
 import { treatGlyphAsBackgroundColor } from '../shared/RendererUtils';
-import { AttributeData } from '../../../common/buffer/AttributeData';
 import { WidthCache } from './WidthCache';
 import { IColorContrastCache } from '../../Types';
 
@@ -312,13 +311,13 @@ export class DomRendererRowFactory {
         }
         if (!cell.isUnderlineColorDefault()) {
           if (cell.isUnderlineColorRGB()) {
-            charElement.style.textDecorationColor = `rgb(${AttributeData.toColorRGB(cell.getUnderlineColor()).join(',')})`;
+            charElement.style.textDecorationColor = toCssColor(`#${(cell.getUnderlineColor() & 0xFFFFFF).toString(16).padStart(6, '0')}`, this._optionsService.rawOptions.colorSpace);
           } else {
             let fg = cell.getUnderlineColor();
             if (this._optionsService.rawOptions.drawBoldTextInBrightColors && cell.isBold() && fg < 8) {
               fg += 8;
             }
-            charElement.style.textDecorationColor = colors.ansi[fg].css;
+            charElement.style.textDecorationColor = toCssColor(colors.ansi[fg].css, this._optionsService.rawOptions.colorSpace);
           }
         }
       }
@@ -411,7 +410,7 @@ export class DomRendererRowFactory {
           break;
         case Attributes.CM_RGB:
           resolvedBg = channels.toColor(bg >> 16, bg >> 8 & 0xFF, bg & 0xFF);
-          this._addStyle(charElement, `background-color:#${(bg >>> 0).toString(16).padStart(6, '0')}`);
+          this._addStyle(charElement, `background-color:${toCssColor(`#${(bg >>> 0).toString(16).padStart(6, '0')}`, this._optionsService.rawOptions.colorSpace)}`);
           break;
         case Attributes.CM_DEFAULT:
         default:
@@ -448,7 +447,7 @@ export class DomRendererRowFactory {
             (fg      ) & 0xFF
           );
           if (!this._applyMinimumContrast(charElement, resolvedBg, color, cell, bgOverride, fgOverride)) {
-            this._addStyle(charElement, `color:#${fg.toString(16).padStart(6, '0')}`);
+            this._addStyle(charElement, `color:${toCssColor(`#${fg.toString(16).padStart(6, '0')}`, this._optionsService.rawOptions.colorSpace)}`);
           }
           break;
         case Attributes.CM_DEFAULT:
@@ -513,7 +512,7 @@ export class DomRendererRowFactory {
     }
 
     if (adjustedColor) {
-      this._addStyle(element, `color:${adjustedColor.css}`);
+      this._addStyle(element, `color:${toCssColor(adjustedColor.css, this._optionsService.rawOptions.colorSpace)}`);
       return true;
     }
 

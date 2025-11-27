@@ -185,7 +185,7 @@ export class IIPHandler implements IOscHandler, IResetHandler {
         // use fast-path if we don't need to rescale
         this._dec.release();
         const canvas = ImageRenderer.createCanvas(undefined, this._qoiDec.width, this._qoiDec.height);
-        canvas.getContext('2d')?.putImageData(blob, 0, 0);
+        canvas.getContext('2d', { colorSpace: this._coreTerminal._core.optionsService.rawOptions.colorSpace })?.putImageData(blob, 0, 0);
         this._storage.addImage(canvas);
         return true;
       }

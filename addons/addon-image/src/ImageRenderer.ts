@@ -80,10 +80,19 @@ export class ImageRenderer extends Disposable implements IDisposable {
     if (this._terminal._core.screenElement) {
       this._open();
     }
-    // hack to spot fontSize changes
+    // hack to spot fontSize and colorSpace changes
     this._optionsRefresh.value = this._terminal._core.optionsService.onOptionChange(option => {
       if (option === 'fontSize') {
         this.rescaleCanvas();
+        this._renderService?.refreshRows(0, this._terminal.rows);
+      } else if (option === 'colorSpace') {
+        const layers = [...this._layers.keys()];
+        for (const layer of layers) {
+          this.removeLayerFromDom(layer);
+        }
+        for (const layer of layers) {
+          this.insertLayerToDom(layer);
+        }
         this._renderService?.refreshRows(0, this._terminal.rows);
       }
     });
@@ -226,7 +235,7 @@ export class ImageRenderer extends Disposable implements IDisposable {
     const finalHeight = sy + height > img.height ? img.height - sy : height;
 
     const canvas = ImageRenderer.createCanvas(this.document, finalWidth, finalHeight);
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { colorSpace: this._colorSpace });
     if (ctx) {
       ctx.drawImage(
         img,
@@ -304,7 +313,7 @@ export class ImageRenderer extends Disposable implements IDisposable {
       Math.ceil(spec.orig!.width * currentWidth / originalWidth),
       Math.ceil(spec.orig!.height * currentHeight / originalHeight)
     );
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { colorSpace: this._colorSpace });
     if (ctx) {
       ctx.drawImage(spec.orig!, 0, 0, canvas.width, canvas.height);
       spec.actual = canvas;
@@ -360,7 +369,7 @@ export class ImageRenderer extends Disposable implements IDisposable {
       canvas.style.zIndex = '0';
       screenElement.appendChild(canvas);
     }
-    const ctx = canvas.getContext('2d', { alpha: true });
+    const ctx = canvas.getContext('2d', { alpha: true, colorSpace: this._colorSpace  });
     if (!ctx) {
       canvas.remove();
       return;
@@ -388,7 +397,7 @@ export class ImageRenderer extends Disposable implements IDisposable {
     // create blueprint to fill placeholder with
     const bWidth = 32;  // must be 2^n
     const blueprint = ImageRenderer.createCanvas(this.document, bWidth, height);
-    const ctx = blueprint.getContext('2d', { alpha: false });
+    const ctx = blueprint.getContext('2d', { alpha: false, colorSpace: this._colorSpace });
     if (!ctx) return;
     const imgData = ImageRenderer.createImageData(ctx, bWidth, height);
     const d32 = new Uint32Array(imgData.data.buffer);
@@ -407,7 +416,7 @@ export class ImageRenderer extends Disposable implements IDisposable {
     // create placeholder line, width aligned to blueprint width
     const width = (screen.width + bWidth - 1) & ~(bWidth - 1) || Constants.PLACEHOLDER_LENGTH;
     this._placeholder = ImageRenderer.createCanvas(this.document, width, height);
-    const ctx2 = this._placeholder.getContext('2d', { alpha: false });
+    const ctx2 = this._placeholder.getContext('2d', { alpha: false, colorSpace: this._colorSpace });
     if (!ctx2) {
       this._placeholder = undefined;
       return;
@@ -420,5 +429,9 @@ export class ImageRenderer extends Disposable implements IDisposable {
 
   public get document(): Document | undefined {
     return this._terminal._core._coreBrowserService?.window.document;
+  }
+
+  private get _colorSpace(): 'srgb' | 'display-p3' | undefined {
+    return this._terminal._core.optionsService.rawOptions.colorSpace;
   }
 }
