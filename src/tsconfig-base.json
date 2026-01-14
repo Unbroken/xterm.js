@@ -3,6 +3,7 @@
     "module": "commonjs",
     "target": "es2021",
     "rootDir": ".",
+    "skipLibCheck": true,
 
     "sourceMap": true,
     "removeComments": true,
