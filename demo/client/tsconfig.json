@@ -5,6 +5,7 @@
     "outDir": "../out-demo/client",
     "rootDir": ".",
     "sourceMap": true,
+    "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
       "@xterm/addon-attach": ["../../addons/addon-attach"],

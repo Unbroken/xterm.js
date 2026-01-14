@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig-library-base",
   "compilerOptions": {
+    "skipLibCheck": true,
     "lib": [
       "dom",
       "es2021"
