@@ -55,6 +55,7 @@ export interface ICharAtlasConfig {
   minimumContrastRatio: number;
   colors: IColorSet;
   colorSpace?: 'srgb' | 'display-p3';
+  disableFontHinting: boolean;
 }
 
 export interface ITextureAtlas extends IDisposable {
