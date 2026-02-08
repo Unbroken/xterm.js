@@ -66,6 +66,13 @@ declare module '@xterm/headless' {
     cursorWidth?: number;
 
     /**
+     * When enabled, uses geometric precision text rendering instead of default
+     * font hinting. This can improve the appearance of certain fonts. The
+     * default is false.
+     */
+    disableFontHinting?: boolean;
+
+    /**
      * Whether input should be disabled.
      */
     disableStdin?: boolean;
