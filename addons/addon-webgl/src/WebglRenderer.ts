@@ -279,6 +279,10 @@ export class WebglRenderer extends Disposable implements IRenderer {
     this._updateDimensions();
     this._refreshCharAtlas();
     this._updateCursorBlink();
+
+    // Force a full refresh to pick up changes like disableFontHinting that
+    // alter the texture atlas without changing dimensions.
+    this._clearModel(true);
   }
 
   /**
