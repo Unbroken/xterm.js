@@ -128,7 +128,8 @@ export class DomRenderer extends Disposable implements IRenderer {
       this._optionsService.rawOptions.fontFamily,
       this._optionsService.rawOptions.fontSize,
       this._optionsService.rawOptions.fontWeight,
-      this._optionsService.rawOptions.fontWeightBold
+      this._optionsService.rawOptions.fontWeightBold,
+      this._optionsService.rawOptions.disableFontHinting
     );
     this._setDefaultSpacing();
   }
@@ -197,6 +198,7 @@ export class DomRenderer extends Disposable implements IRenderer {
       ` font-family: ${this._optionsService.rawOptions.fontFamily};` +
       ` font-size: ${this._optionsService.rawOptions.fontSize}px;` +
       ` font-kerning: none;` +
+      ` text-rendering: ${this._optionsService.rawOptions.disableFontHinting ? 'geometricPrecision' : 'auto'};` +
       ` white-space: pre` +
       `}`;
     styles +=
@@ -502,7 +504,8 @@ export class DomRenderer extends Disposable implements IRenderer {
       this._optionsService.rawOptions.fontFamily,
       this._optionsService.rawOptions.fontSize,
       this._optionsService.rawOptions.fontWeight,
-      this._optionsService.rawOptions.fontWeightBold
+      this._optionsService.rawOptions.fontWeightBold,
+      this._optionsService.rawOptions.disableFontHinting
     );
     this._setDefaultSpacing();
   }
