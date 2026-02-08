@@ -31,7 +31,7 @@ export class CharSizeService extends Disposable implements ICharSizeService {
     } catch {
       this._measureStrategy = this._register(new DomMeasureStrategy(document, parentElement, this._optionsService));
     }
-    this._register(this._optionsService.onMultipleOptionChange(['fontFamily', 'fontSize'], () => this.measure()));
+    this._register(this._optionsService.onMultipleOptionChange(['fontFamily', 'fontSize', 'disableFontHinting'], () => this.measure()));
   }
 
   public measure(): void {
@@ -93,6 +93,7 @@ class DomMeasureStrategy extends BaseMeasureStategy {
   public measure(): Readonly<IMeasureResult> {
     this._measureElement.style.fontFamily = this._optionsService.rawOptions.fontFamily;
     this._measureElement.style.fontSize = `${this._optionsService.rawOptions.fontSize}px`;
+    this._measureElement.style.textRendering = this._optionsService.rawOptions.disableFontHinting ? 'geometricPrecision' : '';
 
     // Note that this triggers a synchronous layout
     this._validateAndSet(Number(this._measureElement.offsetWidth) / DomMeasureStrategyConstants.REPEAT, Number(this._measureElement.offsetHeight));
@@ -120,6 +121,7 @@ class TextMetricsMeasureStrategy extends BaseMeasureStategy {
 
   public measure(): Readonly<IMeasureResult> {
     this._ctx.font = `${this._optionsService.rawOptions.fontSize}px ${this._optionsService.rawOptions.fontFamily}`;
+    this._ctx.textRendering = this._optionsService.rawOptions.disableFontHinting ? 'geometricPrecision' : 'auto';
     const metrics = this._ctx.measureText('W');
     this._validateAndSet(metrics.width, metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent);
     return this._result;

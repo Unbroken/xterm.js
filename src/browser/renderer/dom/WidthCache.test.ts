@@ -10,7 +10,7 @@ import { IWidthCacheFontVariantCanvas, WidthCache, WidthCacheSettings } from './
 class MockWidthCacheFontVariantCanvas implements IWidthCacheFontVariantCanvas {
   public widths: { [key: string]: number } = {};
 
-  public setFont(_fontFamily: string, _fontSize: number, _fontWeight: unknown, _italic: boolean): void {
+  public setFont(_fontFamily: string, _fontSize: number, _fontWeight: unknown, _italic: boolean, _disableFontHinting: boolean): void {
   }
 
   public measure(c: string): number {

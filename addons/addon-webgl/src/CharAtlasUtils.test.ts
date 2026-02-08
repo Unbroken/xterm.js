@@ -53,6 +53,7 @@ function createTestConfig(overrides: Partial<ICharAtlasConfig> = {}): ICharAtlas
     allowTransparency: false,
     drawBoldTextInBrightColors: true,
     minimumContrastRatio: 1,
+    disableFontHinting: false,
     colors,
     ...overrides
   };
