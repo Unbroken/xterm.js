@@ -20,6 +20,7 @@ import { INewScrollDimensions, INewScrollPosition, IScrollDimensions, IScrollPos
 
 const enum Constants {
   HIDE_TIMEOUT = 500,
+  HIDE_TIMEOUT_SCHEDULING_PRECISION = 50,
   SCROLL_WHEEL_SENSITIVITY = 50
 }
 
@@ -170,6 +171,7 @@ export class SmoothScrollableElement extends Widget {
   private _mouseIsOver: boolean;
 
   private readonly _hideTimeout: TimeoutTimer;
+  private _lastScheduleHideTime: number = -Constants.HIDE_TIMEOUT_SCHEDULING_PRECISION;
   private _shouldRender: boolean;
 
   private _revealOnScroll: boolean;
@@ -535,6 +537,11 @@ export class SmoothScrollableElement extends Widget {
 
   private _scheduleHide(): void {
     if (!this._mouseIsOver && !this._isDragging) {
+      const now = performance.now();
+      if (now - this._lastScheduleHideTime < Constants.HIDE_TIMEOUT_SCHEDULING_PRECISION) {
+        return;
+      }
+      this._lastScheduleHideTime = now;
       this._hideTimeout.cancelAndSet(() => this._hide(), Constants.HIDE_TIMEOUT);
     }
   }
