@@ -19,6 +19,7 @@ import { INewScrollDimensions, INewScrollPosition, IScrollDimensions, IScrollPos
 // import 'vs/css!./media/scrollbars';
 
 const HIDE_TIMEOUT = 500;
+const HIDE_TIMEOUT_SCHEDULING_PRECISION = 50;
 const SCROLL_WHEEL_SENSITIVITY = 50;
 
 class MouseWheelClassifierItem {
@@ -168,6 +169,7 @@ export class SmoothScrollableElement extends Widget {
   private _mouseIsOver: boolean;
 
   private readonly _hideTimeout: TimeoutTimer;
+  private _lastScheduleHideTime: number = -HIDE_TIMEOUT_SCHEDULING_PRECISION;
   private _shouldRender: boolean;
 
   private _revealOnScroll: boolean;
@@ -533,6 +535,11 @@ export class SmoothScrollableElement extends Widget {
 
   private _scheduleHide(): void {
     if (!this._mouseIsOver && !this._isDragging) {
+      const now = performance.now();
+      if (now - this._lastScheduleHideTime < HIDE_TIMEOUT_SCHEDULING_PRECISION) {
+        return;
+      }
+      this._lastScheduleHideTime = now;
       this._hideTimeout.cancelAndSet(() => this._hide(), HIDE_TIMEOUT);
     }
   }
