@@ -633,9 +633,9 @@ export class WebglRenderer extends Disposable implements IRenderer {
       return;
     }
 
-    // Calculate the device character width. Width is floored as it must be drawn to an integer grid
+    // Calculate the device character width. Width is rounded as it must be drawn to an integer grid
     // in order for the char atlas glyphs to not be blurry.
-    this.dimensions.device.char.width = Math.floor(this._charSizeService.width * this._devicePixelRatio);
+    this.dimensions.device.char.width = Math.round(this._charSizeService.width * this._devicePixelRatio);
 
     // Calculate the device character height. Height is ceiled in case devicePixelRatio is a
     // floating point number in order to ensure there is enough space to draw the character to the
@@ -643,9 +643,9 @@ export class WebglRenderer extends Disposable implements IRenderer {
     this.dimensions.device.char.height = Math.ceil(this._charSizeService.height * this._devicePixelRatio);
 
     // Calculate the device cell height, if lineHeight is _not_ 1, the resulting value will be
-    // floored since lineHeight can never be lower then 1, this guarentees the device cell height
+    // rounded since lineHeight can never be lower than 1, this guarantees the device cell height
     // will always be larger than device char height.
-    this.dimensions.device.cell.height = Math.floor(this.dimensions.device.char.height * this._optionsService.rawOptions.lineHeight);
+    this.dimensions.device.cell.height = Math.round(this.dimensions.device.char.height * this._optionsService.rawOptions.lineHeight);
 
     // Calculate the y offset within a cell that glyph should draw at in order for it to be centered
     // correctly within the cell.
