@@ -80,6 +80,14 @@ declare module '@xterm/headless' {
     disableFontHinting?: boolean;
 
     /**
+     * When enabled, forces grayscale antialiasing instead of subpixel (LCD)
+     * antialiasing for text rendered on the canvas. This is useful when the
+     * application has disabled LCD text rendering at the platform level. The
+     * default is false.
+     */
+    disableSubpixelAntialiasing?: boolean;
+
+    /**
      * Whether input should be disabled.
      */
     disableStdin?: boolean;
