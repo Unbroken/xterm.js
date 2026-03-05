@@ -97,8 +97,12 @@ export class TextureAtlas implements ITextureAtlas {
       this._config.deviceCellWidth * 4 + TMP_CANVAS_GLYPH_PADDING * 2,
       this._config.deviceCellHeight + TMP_CANVAS_GLYPH_PADDING * 2
     );
+    // Use alpha: true when disableSubpixelAntialiasing is set. An opaque canvas
+    // (alpha: false) allows the browser to use subpixel (LCD) antialiasing for
+    // fillText. Forcing alpha: true guarantees grayscale antialiasing since
+    // subpixel AA is incompatible with canvas transparency.
     this._tmpCtx = throwIfFalsy(this._tmpCanvas.getContext('2d', {
-      alpha: this._config.allowTransparency,
+      alpha: this._config.allowTransparency || this._config.disableSubpixelAntialiasing,
       willReadFrequently: true,
       colorSpace: this._config.colorSpace
     }));

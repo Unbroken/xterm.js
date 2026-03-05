@@ -218,6 +218,7 @@ export interface ITerminalOptions {
   cursorWidth?: number;
   cursorInactiveStyle?: CursorInactiveStyle;
   disableFontHinting?: boolean;
+  disableSubpixelAntialiasing?: boolean;
   disableStdin?: boolean;
   documentOverride?: any | null;
   drawBoldTextInBrightColors?: boolean;
