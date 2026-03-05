@@ -50,7 +50,8 @@ export function generateConfig(deviceCellWidth: number, deviceCellHeight: number
     minimumContrastRatio: options.minimumContrastRatio,
     colors: clonedColors,
     colorSpace: options.colorSpace,
-    disableFontHinting: options.disableFontHinting
+    disableFontHinting: options.disableFontHinting,
+    disableSubpixelAntialiasing: options.disableSubpixelAntialiasing
   };
 }
 
@@ -79,7 +80,8 @@ export function configEquals(a: ICharAtlasConfig, b: ICharAtlasConfig): boolean 
       a.colors.foreground.rgba === b.colors.foreground.rgba &&
       a.colors.background.rgba === b.colors.background.rgba &&
       a.colorSpace === b.colorSpace &&
-      a.disableFontHinting === b.disableFontHinting;
+      a.disableFontHinting === b.disableFontHinting &&
+      a.disableSubpixelAntialiasing === b.disableSubpixelAntialiasing;
 }
 
 export function is256Color(colorCode: number): boolean {

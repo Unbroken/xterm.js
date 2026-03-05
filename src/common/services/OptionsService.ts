@@ -43,6 +43,7 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
   minimumContrastRatio: 1,
   mouseEventsRequireAlt: false,
   disableFontHinting: false,
+  disableSubpixelAntialiasing: false,
   disableStdin: false,
   allowProposedApi: false,
   allowTransparency: false,

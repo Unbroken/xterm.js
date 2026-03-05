@@ -56,6 +56,7 @@ export interface ICharAtlasConfig {
   colors: IColorSet;
   colorSpace?: 'srgb' | 'display-p3';
   disableFontHinting: boolean;
+  disableSubpixelAntialiasing: boolean;
 }
 
 export interface ITextureAtlas extends IDisposable {
