@@ -114,6 +114,7 @@ export class TextureAtlas implements ITextureAtlas {
       page.canvas.remove();
     }
     this._onAddTextureAtlasCanvas.dispose();
+    this._onRemoveTextureAtlasCanvas.dispose();
   }
 
   public warmUp(): void {
@@ -138,7 +139,9 @@ export class TextureAtlas implements ITextureAtlas {
 
   private _requestClearModel = false;
   public beginFrame(): boolean {
-    return this._requestClearModel;
+    const result = this._requestClearModel;
+    this._requestClearModel = false;
+    return result;
   }
 
   public clearTexture(): void {
@@ -198,7 +201,7 @@ export class TextureAtlas implements ITextureAtlas {
 
       // Merge into the new page
       const mergedPage = this._mergePages(mergingPages, mergedPageIndex);
-      mergedPage.version++;
+      mergedPage.version = ++AtlasPage.nextVersion;
 
       // Delete the pages, shifting glyph texture pages as needed
       for (let i = sortedMergingPagesIndexes.length - 1; i >= 0; i--) {
@@ -256,7 +259,7 @@ export class TextureAtlas implements ITextureAtlas {
       for (const g of adjustingPage.glyphs) {
         g.texturePage--;
       }
-      adjustingPage.version++;
+      adjustingPage.version = ++AtlasPage.nextVersion;
     }
   }
 
@@ -943,7 +946,7 @@ export class TextureAtlas implements ITextureAtlas {
       rasterizedGlyph.size.y
     );
     activePage.addGlyph(rasterizedGlyph);
-    activePage.version++;
+    activePage.version = ++AtlasPage.nextVersion;
 
     return rasterizedGlyph;
   }
@@ -1053,9 +1056,12 @@ class AtlasPage {
   }
 
   /**
-   * Used to check whether the canvas of the atlas page has changed.
+   * Monotonically increasing across all atlas pages globally. Used to detect when the texture
+   * unit at a given index needs to be re-uploaded, both for content changes within the same
+   * page and for a page object swap at the same index.
    */
-  public version = 0;
+  public static nextVersion: number = 0;
+  public version = ++AtlasPage.nextVersion;
 
   // Texture atlas current positioning data. The texture packing strategy used is to fill from
   // left-to-right and top-to-bottom. When the glyph being written is less than half of the current
@@ -1099,7 +1105,7 @@ class AtlasPage {
     this.currentRow.y = 0;
     this.currentRow.height = 0;
     this.fixedRows.length = 0;
-    this.version++;
+    this.version = ++AtlasPage.nextVersion;
   }
 }
 
