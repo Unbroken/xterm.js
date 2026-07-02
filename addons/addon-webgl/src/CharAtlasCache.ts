@@ -4,6 +4,7 @@
  */
 
 import { TextureAtlas } from './TextureAtlas';
+import { clearCustomGlyphPatternCache } from './customGlyphs/CustomGlyphRasterizer';
 import { ITerminalOptions, Terminal } from '@xterm/xterm';
 import { ITerminal, ReadonlyColorSet } from 'browser/Types';
 import { ICharAtlasConfig, ITextureAtlas } from './Types';
@@ -76,6 +77,18 @@ export function acquireTextureAtlas(
   };
   charAtlasCache.push(newEntry);
   return newEntry.atlas;
+}
+
+/**
+ * Clears the contents of all cached texture atlases. This is needed after the GPU process
+ * crashes as that wipes the contents of every accelerated 2D canvas backing the atlas pages,
+ * while the CPU-side glyph cache maps still claim the glyphs exist.
+ */
+export function clearAllTextureAtlases(): void {
+  clearCustomGlyphPatternCache();
+  for (const entry of charAtlasCache) {
+    entry.atlas.clearTexture();
+  }
 }
 
 /**
