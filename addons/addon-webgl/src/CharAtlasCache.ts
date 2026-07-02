@@ -79,6 +79,17 @@ export function acquireTextureAtlas(
 }
 
 /**
+ * Clears the contents of all cached texture atlases. This is needed after the GPU process
+ * crashes as that wipes the contents of every accelerated 2D canvas backing the atlas pages,
+ * while the CPU-side glyph cache maps still claim the glyphs exist.
+ */
+export function clearAllTextureAtlases(): void {
+  for (const entry of charAtlasCache) {
+    entry.atlas.clearTexture();
+  }
+}
+
+/**
  * Removes a terminal reference from the cache, allowing its memory to be freed.
  * @param terminal The terminal to remove.
  */
