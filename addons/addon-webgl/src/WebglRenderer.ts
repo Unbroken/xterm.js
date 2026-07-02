@@ -5,7 +5,7 @@
 
 import { ITerminal } from 'browser/Types';
 import { CellColorResolver } from './CellColorResolver';
-import { acquireTextureAtlas, removeTerminalFromCache } from './CharAtlasCache';
+import { acquireTextureAtlas, clearAllTextureAtlases, removeTerminalFromCache } from './CharAtlasCache';
 import { CursorBlinkStateManager } from './CursorBlinkStateManager';
 import { observeDevicePixelDimensions } from './DevicePixelObserver';
 import { IRenderDimensions, IRenderer, IRequestRedrawEvent } from 'browser/renderer/shared/Types';
@@ -148,8 +148,12 @@ export class WebglRenderer extends Disposable implements IRenderer {
       this._logService.warn('webglcontextrestored event received');
       clearTimeout(this._contextRestorationTimeout);
       this._contextRestorationTimeout = undefined;
-      // The texture atlas and glyph renderer must be fully reinitialized
-      // because their contents have been lost.
+      // A lost context usually means the GPU process crashed or was reset. That also wipes the
+      // contents of the accelerated 2D canvases backing every cached texture atlas page (of all
+      // terminals, not just this one), while the CPU-side glyph caches still claim the glyphs
+      // exist. Clear all cached atlases so glyphs are re-rasterized, then fully reinitialize the
+      // GL state as its resources have been lost too.
+      clearAllTextureAtlases();
       removeTerminalFromCache(this._terminal);
       this._initializeWebGLState();
       this._requestRedrawViewport();

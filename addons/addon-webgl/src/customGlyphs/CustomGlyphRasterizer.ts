@@ -461,6 +461,14 @@ function drawPathNegativeDefinitionCharacter(
 
 const cachedPatterns: Map<CustomGlyphPatternDefinition, Map</* fillStyle */string, CanvasPattern>> = new Map();
 
+/**
+ * Clears the cached patterns. This is needed after the GPU process crashes, as that can wipe the
+ * contents of the accelerated canvases backing them.
+ */
+export function clearCustomGlyphPatternCache(): void {
+  cachedPatterns.clear();
+}
+
 function drawPatternChar(
   ctx: CanvasRenderingContext2D,
   charDefinition: number[][],
