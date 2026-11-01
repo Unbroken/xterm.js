@@ -70,7 +70,8 @@ export class Emitter<T> {
       return;
     }
     this._disposed = true;
-    this._listeners.length = 0;
+    // Replace rather than truncate, fire may be iterating the array when a listener disposes this
+    this._listeners = [];
   }
 }
 
