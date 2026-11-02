@@ -149,6 +149,53 @@ describe('WriteBuffer', () => {
       assert.deepEqual(stack, ['a', toBytes('b'), 'c', 'd']);
       assert.deepEqual(cbStack, ['a', 'b', 'c']);
     });
+    it('flushSync while a chunk is parsed does not parse it again', async () => {
+      // A flush from inside the parse, as by a callback that resizes the terminal while it renders
+      let flushed = false;
+      wb = new WriteBuffer(data => {
+        stack.push(data);
+        if (data === 'a' && !flushed) {
+          flushed = true;
+          wb.flushSync();
+        }
+      });
+      await new Promise<void>(resolve => {
+        wb.write('a', () => { cbStack.push('a'); });
+        wb.write('b', () => {
+          cbStack.push('b');
+          resolve();
+        });
+      });
+      assert.deepEqual(stack, ['a', 'b']);
+      assert.deepEqual(cbStack, ['a', 'b']);
+    });
+    it('flushSync while an async handler of a chunk is pending does not parse it again', async () => {
+      let resolveHandler!: (result: boolean) => void;
+      const continuations: boolean[] = [];
+      wb = new WriteBuffer((data, promiseResult) => {
+        if (data === 'a' && promiseResult === undefined || data === 'a' && !continuations.length) {
+          continuations.push(true);
+          stack.push(data);
+          return new Promise<boolean>(resolve => resolveHandler = resolve);
+        }
+        if (data !== 'a') {
+          stack.push(data);
+        }
+      });
+      const written = new Promise<void>(resolve => {
+        wb.write('a', () => { cbStack.push('a'); });
+        wb.write('b', () => {
+          cbStack.push('b');
+          resolve();
+        });
+      });
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      wb.flushSync();
+      resolveHandler(true);
+      await written;
+      assert.deepEqual(stack, ['a', 'b']);
+      assert.deepEqual(cbStack, ['a', 'b']);
+    });
     it('flushSync from a write callback does not repeat parsed chunks or callbacks', async () => {
       await new Promise<void>(resolve => {
         wb.write('a', () => {

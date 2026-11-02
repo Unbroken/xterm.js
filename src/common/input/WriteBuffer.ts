@@ -39,6 +39,11 @@ export class WriteBuffer extends Disposable {
   private _pendingData = 0;
   private _bufferOffset = 0;
   private _isSyncWriting = false;
+  /**
+   * Whether a chunk is being parsed and hasn't been retired yet, which includes the time its parse
+   * waits for an async handler. A flush then would parse the same chunk again.
+   */
+  private _isParsingChunk = false;
   private _syncCalls = 0;
   private _didUserInput = false;
 
@@ -74,6 +79,12 @@ export class WriteBuffer extends Disposable {
     }
     // exit early if another sync write loop is active
     if (this._isSyncWriting) {
+      return;
+    }
+    // A flush from inside the parse of a chunk, such as by a callback that resizes the terminal
+    // while the chunk renders, takes effect at that point of the chunk: the rest of the queue
+    // follows the chunk as usual, rather than parsing the chunk again.
+    if (this._isParsingChunk) {
       return;
     }
     this._isSyncWriting = true;
@@ -222,7 +233,14 @@ export class WriteBuffer extends Disposable {
     const startTime = lastTime || performance.now();
     while (this._writeBuffer.length > this._bufferOffset) {
       const data = this._writeBuffer[this._bufferOffset];
-      const result = this._action(data, promiseResult);
+      this._isParsingChunk = true;
+      let result: void | Promise<boolean>;
+      try {
+        result = this._action(data, promiseResult);
+      } catch (e) {
+        this._isParsingChunk = false;
+        throw e;
+      }
       if (result) {
         /**
          * If we get a promise as return value, we re-schedule the continuation
@@ -287,6 +305,7 @@ export class WriteBuffer extends Disposable {
       }
 
       // Retire the chunk before its callback can synchronously flush the remaining queue.
+      this._isParsingChunk = false;
       const cb = this._callbacks[this._bufferOffset];
       this._bufferOffset++;
       this._pendingData -= data.length;

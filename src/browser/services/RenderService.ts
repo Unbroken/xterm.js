@@ -39,6 +39,16 @@ export class RenderService extends Disposable implements IRenderService {
   private _canvasWidth: number = 0;
   private _canvasHeight: number = 0;
   private _syncOutputHandler: SynchronizedOutputHandler;
+  /**
+   * Whether the terminal has drawn since the last animation frame, which allows a draw at the end
+   * of a synchronized update. A program that sends one update right after another can have one in
+   * progress whenever the animation frame fires, so the chance to draw at the rate of the screen
+   * is when an update ends and the buffer holds a complete frame: the first update that ends after
+   * each frame is drawn.
+   */
+  private _hasDrawnSinceFrame: boolean = false;
+  /** The animation frame that resets {@link _hasDrawnSinceFrame}, and its window. */
+  private _drawnFrame: { frame: number, window: Window } | undefined;
   private _selectionState: ISelectionState = {
     start: undefined,
     end: undefined,
@@ -88,6 +98,7 @@ export class RenderService extends Disposable implements IRenderService {
       () => this._fullRefresh()
     );
     this._register(toDisposable(() => this._syncOutputHandler.dispose()));
+    this._register(toDisposable(() => this._drawnFrame?.window.cancelAnimationFrame(this._drawnFrame.frame)));
 
     this._register(this._coreBrowserService.onDprChange(() => this.handleDevicePixelRatioChange()));
 
@@ -129,6 +140,12 @@ export class RenderService extends Disposable implements IRenderService {
 
     this._registerIntersectionObserver(this._coreBrowserService.window, screenElement);
     this._register(this._coreBrowserService.onWindowChange((w) => this._registerIntersectionObserver(w, screenElement)));
+    // The frame that resets the latch belongs to the old window, which can close before it fires
+    this._register(this._coreBrowserService.onWindowChange(() => {
+      this._drawnFrame?.window.cancelAnimationFrame(this._drawnFrame.frame);
+      this._drawnFrame = undefined;
+      this._hasDrawnSinceFrame = false;
+    }));
   }
 
   private _registerIntersectionObserver(w: Window & typeof globalThis, screenElement: HTMLElement): void {
@@ -184,6 +201,17 @@ export class RenderService extends Disposable implements IRenderService {
 
     if (sync) {
       this._renderRows(start, end);
+    } else if (buffered && !this._hasDrawnSinceFrame) {
+      // An update ended, while the parser handles the write that ended it, and nothing has been
+      // drawn since the last frame, so the frame is drawn now, at the rate of the screen. The
+      // write buffer keeps callbacks that resize the terminal meanwhile from parsing the write
+      // again. Errors, such as from render event listeners, are reported after the write instead
+      // of stopping the parser in the middle of it.
+      try {
+        this._renderRows(start, end);
+      } catch (e) {
+        setTimeout(() => { throw e; });
+      }
     } else {
       this._renderDebouncer.refresh(start, end, this._rowCount);
     }
@@ -209,6 +237,7 @@ export class RenderService extends Disposable implements IRenderService {
 
     // Render
     this._renderer.value.renderRows(start, end);
+    this._handleDrawn();
 
     // Update selection if needed
     if (this._needsSelectionRefresh) {
@@ -222,6 +251,19 @@ export class RenderService extends Disposable implements IRenderService {
     }
     this._onRender.fire({ start, end });
     this._isNextRenderRedrawOnly = true;
+  }
+
+  private _handleDrawn(): void {
+    if (this._hasDrawnSinceFrame) {
+      return;
+    }
+    this._hasDrawnSinceFrame = true;
+    const frameWindow = this._coreBrowserService.window;
+    const frame = frameWindow.requestAnimationFrame(() => {
+      this._drawnFrame = undefined;
+      this._hasDrawnSinceFrame = false;
+    });
+    this._drawnFrame = { frame, window: frameWindow };
   }
 
   public resize(cols: number, rows: number): void {

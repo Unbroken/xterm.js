@@ -2575,6 +2575,40 @@ describe('InputHandler', () => {
     });
   });
 
+  describe('end of synchronized output', () => {
+    let refreshes: ({ start: number, end: number } | undefined)[];
+    beforeEach(() => {
+      bufferService.resize(10, 5);
+      refreshes = [];
+      inputHandler.onRequestRefreshRows(e => refreshes.push(e));
+    });
+    async function endUpdate(after: string, before = ''): Promise<({ start: number, end: number } | undefined)[]> {
+      await inputHandler.parseP(before + '\x1b[3;3H\x1b[?2026hA');
+      const result: ({ start: number, end: number } | undefined)[] = refreshes = [];
+      await inputHandler.parseP('\x1b[?2026l' + after);
+      refreshes = [];
+      return result;
+    }
+    it('refreshes every row once when nothing changes after the update ends', async () => {
+      assert.deepEqual(await endUpdate(''), [undefined]);
+    });
+    it('refreshes the cursor\'s rows with any rows that change after the update ends', async () => {
+      assert.deepEqual({
+        // Scrolls a region that excludes the cursor, without moving it
+        otherRows: await endUpdate('\x1b[S', '\x1b[1;2r'),
+        moved: await endUpdate('\r'),
+        style: await endUpdate('\x1b[6 q'),
+        // The bar from the previous write
+        sameStyle: await endUpdate('\x1b[6 q')
+      }, {
+        otherRows: [undefined, { start: 0, end: 2 }],
+        moved: [undefined, { start: 2, end: 2 }],
+        style: [undefined, { start: 2, end: 2 }],
+        sameStyle: [undefined]
+      });
+    });
+  });
+
   describe('InputHandler - kitty keyboard', () => {
     let bufferService: IBufferService;
     let coreService: ICoreService;

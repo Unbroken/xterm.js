@@ -103,6 +103,11 @@ export class InputHandler extends Disposable implements IInputHandler {
   private _windowTitle = '';
   private _iconName = '';
   private _dirtyRowTracker: IDirtyRowTracker;
+  /**
+   * How the cursor was drawn when a synchronized update ended in the write being parsed, after
+   * which only the rows that change are dirty: its position, whether it was hidden, and its style.
+   */
+  private _syncEndCursor: { x: number, y: number, isHidden: boolean, style: string | undefined, blink: boolean | undefined } | undefined;
   protected _windowTitleStack: string[] = [];
   protected _iconNameStack: string[] = [];
 
@@ -502,6 +507,20 @@ export class InputHandler extends Disposable implements IInputHandler {
       this._onCursorMove.fire();
     }
 
+    if (this._syncEndCursor) {
+      const before = this._syncEndCursor;
+      this._syncEndCursor = undefined;
+      const after = this._getDrawnCursor();
+      // The cursor's rows are in every refresh, as without an update, since renderers redraw the
+      // cursor only with its row (the WebGL renderer clears it on every redraw), and also when
+      // it's hidden, since they still draw by where it is (the DOM renderer joins ligatures)
+      const isAnyRowDirty = this._dirtyRowTracker.start <= this._dirtyRowTracker.end;
+      if (isAnyRowDirty || before.x !== after.x || before.y !== after.y || before.isHidden !== after.isHidden || before.style !== after.style || before.blink !== after.blink) {
+        this._dirtyRowTracker.markDirty(before.y);
+        this._dirtyRowTracker.markDirty(after.y);
+      }
+    }
+
     // Refresh any dirty rows accumulated as part of parsing, fire only for rows within the
     // _viewport_ which is relative to ydisp, not relative to ybase.
     const viewportEnd = this._dirtyRowTracker.end + (this._bufferService.buffer.ybase - this._bufferService.buffer.ydisp);
@@ -512,6 +531,17 @@ export class InputHandler extends Disposable implements IInputHandler {
         end: Math.min(viewportEnd, this._bufferService.rows - 1)
       });
     }
+  }
+
+  private _getDrawnCursor(): { x: number, y: number, isHidden: boolean, style: string | undefined, blink: boolean | undefined } {
+    return {
+      x: this._activeBuffer.x,
+      y: this._activeBuffer.y,
+      isHidden: this._coreService.isCursorHidden,
+      // The style and blink the renderers draw, from the terminal's request or else the options
+      style: this._coreService.decPrivateModes.cursorStyle ?? this._optionsService.rawOptions.cursorStyle,
+      blink: this._coreService.decPrivateModes.cursorBlink ?? this._optionsService.rawOptions.cursorBlink
+    };
   }
 
   public print(data: Uint32Array, start: number, end: number): void {
@@ -2285,6 +2315,11 @@ export class InputHandler extends Disposable implements IInputHandler {
         case 2026: // synchronized output (https://github.com/contour-terminal/vt-extensions/blob/master/synchronized-output.md)
           this._coreService.decPrivateModes.synchronizedOutput = false;
           this._onRequestRefreshRows.fire(undefined);
+          // That refresh covers every row, and the renderer may have drawn them already, so the
+          // write only needs to refresh the rows that change after the update ended. The cursor's
+          // rows are dirty at the end of the write if it's drawn differently since.
+          this._dirtyRowTracker.clearRangeToNone();
+          this._syncEndCursor = this._getDrawnCursor();
           break;
         case 2031: // color scheme updates (https://contour-terminal.org/vt-extensions/color-palette-update-notifications/)
           if (this._optionsService.rawOptions.vtExtensions?.colorSchemeQuery ?? true) {
@@ -3645,6 +3680,8 @@ export interface IDirtyRowTracker {
   readonly end: number;
 
   clearRange(): void;
+  /** Clears the range to no rows, not even the cursor's. */
+  clearRangeToNone(): void;
   markDirty(y: number): void;
   markRangeDirty(y1: number, y2: number): void;
   markAllDirty(): void;
@@ -3665,10 +3702,17 @@ class DirtyRowTracker implements IDirtyRowTracker {
     this.end = this._bufferService.buffer.y;
   }
 
+  public clearRangeToNone(): void {
+    this.start = Number.MAX_SAFE_INTEGER;
+    this.end = -1;
+  }
+
   public markDirty(y: number): void {
+    // Both bounds can move when the range has no rows
     if (y < this.start) {
       this.start = y;
-    } else if (y > this.end) {
+    }
+    if (y > this.end) {
       this.end = y;
     }
   }
