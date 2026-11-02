@@ -38,6 +38,12 @@ export class RenderService extends Disposable implements IRenderService {
   private _canvasWidth: number = 0;
   private _canvasHeight: number = 0;
   private _syncOutputHandler: SynchronizedOutputHandler;
+  /**
+   * Whether a scheduled render was skipped because a synchronized update was in progress. A program
+   * that sends one update right after another can have one in progress whenever the animation frame
+   * fires, so the next chance to render is when an update ends and the buffer holds a complete frame.
+   */
+  private _isRenderPendingSynchronizedOutput: boolean = false;
   private _selectionState: ISelectionState = {
     start: undefined,
     end: undefined,
@@ -174,7 +180,7 @@ export class RenderService extends Disposable implements IRenderService {
       this._isNextRenderRedrawOnly = false;
     }
 
-    if (sync) {
+    if (sync || this._isRenderPendingSynchronizedOutput) {
       this._renderRows(start, end);
     } else {
       this._renderDebouncer.refresh(start, end, this._rowCount);
@@ -190,8 +196,10 @@ export class RenderService extends Disposable implements IRenderService {
     // (in addition to refreshRows) to handle renders that were queued before the mode was enabled.
     if (this._coreService.decPrivateModes.synchronizedOutput) {
       this._syncOutputHandler.bufferRows(start, end);
+      this._isRenderPendingSynchronizedOutput = true;
       return;
     }
+    this._isRenderPendingSynchronizedOutput = false;
 
     // Since this is debounced, a resize event could have happened between the time a refresh was
     // requested and when this triggers. Clamp the values of start and end to ensure they're valid
