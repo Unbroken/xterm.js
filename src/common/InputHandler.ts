@@ -2430,9 +2430,14 @@ export class InputHandler extends Disposable implements IInputHandler {
       accu[advance + cSpace] = params.params[pos + advance];
       if (params.hasSubParams(pos + advance)) {
         const subparams = params.getSubParams(pos + advance)!;
+        // RGB without the color space that ISO 8613-6 has before the components, 38:2:R:G:B, is
+        // what applications such as those built on PDCurses write, and what other terminals take
+        // it as too. With the color space it has one sub parameter more, or an empty one where the
+        // color space is, as in 38:2::R:G.
+        const rgbWithoutColorSpace = advance === 0 && subparams.length === 4 && subparams[0] === 2 && subparams[1] !== -1;
         let i = 0;
         do {
-          if (accu[1] === 5) {
+          if (accu[1] === 5 || (rgbWithoutColorSpace && i > 0)) {
             cSpace = 1;
           }
           accu[advance + i + 1 + cSpace] = subparams[i];
