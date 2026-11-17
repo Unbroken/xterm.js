@@ -962,6 +962,18 @@ describe('InputHandler', () => {
         assert.equal(inputHandler2.curAttrData.fg & 0xFFFFFF, 50 << 16 | 100 << 8 | 150);
         assert.equal(inputHandler.curAttrData.fg, inputHandler2.curAttrData.fg);
       });
+      it('CSI 38:2:50:100:150 m, without the color space', async () => {
+        inputHandler.curAttrData.fg = 0xFFFFFFFF;
+        inputHandler.curAttrData.bg = 0xFFFFFFFF;
+        inputHandler2.curAttrData.fg = 0xFFFFFFFF;
+        inputHandler2.curAttrData.bg = 0xFFFFFFFF;
+        await inputHandler2.parseP('\x1b[38;2;50;100;150m\x1b[48;2;192;192;192m');
+        await inputHandler.parseP('\x1b[38:2:50:100:150m\x1b[48:2:192:192:192m');
+        assert.equal(inputHandler2.curAttrData.fg & 0xFFFFFF, 50 << 16 | 100 << 8 | 150);
+        assert.equal(inputHandler2.curAttrData.bg & 0xFFFFFF, 192 << 16 | 192 << 8 | 192);
+        assert.equal(inputHandler.curAttrData.fg, inputHandler2.curAttrData.fg);
+        assert.equal(inputHandler.curAttrData.bg, inputHandler2.curAttrData.bg);
+      });
       it('CSI 38:2::50:100: m', async () => {
         inputHandler.curAttrData.fg = 0xFFFFFFFF;
         inputHandler2.curAttrData.fg = 0xFFFFFFFF;
