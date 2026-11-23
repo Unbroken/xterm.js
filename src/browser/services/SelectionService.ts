@@ -4,7 +4,7 @@
  */
 
 import { IBufferRange, ILinkifier2 } from '../Types';
-import { getCoordsRelativeToElement } from '../input/Mouse';
+import { getCoordsRelativeToElement, isContextMenuClick } from '../input/Mouse';
 import { moveToCellSequence } from '../input/MoveToCell';
 import { SelectionModel } from '../selection/SelectionModel';
 import { ISelectionRedrawRequestEvent, ISelectionRequestScrollLinesEvent } from '../selection/Types';
@@ -106,6 +106,8 @@ export class SelectionService extends Disposable implements ISelectionService {
   private _workCell: CellData = new CellData();
 
   private _mouseDownTimeStamp: number = 0;
+  /** Whether the last press was on the live screen, where an Alt click can move the cursor. */
+  private _isMouseDownOnLiveScreen = true;
   private _oldHasSelection: boolean = false;
   private _oldSelectionStart: [number, number] | undefined = undefined;
   private _oldSelectionEnd: [number, number] | undefined = undefined;
@@ -341,17 +343,35 @@ export class SelectionService extends Disposable implements ISelectionService {
    * Selects word at the current mouse event coordinates.
    * @param event The mouse event.
    */
+  /**
+   * Whether the cell that a mouse event is on, not the selection boundary nearest to it, is in a
+   * link's 1-based buffer range. Without a cell, it counts as in the range.
+   */
+  private _isClickInRange(event: MouseEvent, range: IBufferRange): boolean {
+    const cell = this._mouseCoordsService.getCoords(event, this._screenElement, this._bufferService.cols, this._bufferService.rows, false);
+    if (!cell) {
+      return true;
+    }
+    const col = cell[0];
+    const row = cell[1] + this._bufferService.buffer.ydisp;
+    if (row < range.start.y || row > range.end.y) {
+      return false;
+    }
+    return (row !== range.start.y || col >= range.start.x) && (row !== range.end.y || col <= range.end.x);
+  }
+
   private _selectWordAtCursor(event: MouseEvent, allowWhitespaceOnlySelection: boolean): boolean {
-    // Check if there is a link under the cursor first and select that if so
+    // Check if there is a link under the cursor first and select that if so, not a link that the
+    // view moved away from since it was hovered
+    const coords = this._getMouseBufferCoords(event);
     const range = this._linkifier.currentLink?.link?.range;
-    if (range) {
+    if (range && this._isClickInRange(event, range)) {
       this._model.selectionStart = [range.start.x - 1, range.start.y - 1];
       this._model.selectionStartLength = getRangeLength(range, this._bufferService.cols);
       this._model.selectionEnd = undefined;
       return true;
     }
 
-    const coords = this._getMouseBufferCoords(event);
     if (coords) {
       this._selectWordAt(coords, allowWhitespaceOnlySelection);
       this._model.selectionEnd = undefined;
@@ -435,6 +455,13 @@ export class SelectionService extends Disposable implements ISelectionService {
    * @param event The mouse event.
    */
   public shouldForceSelection(event: MouseEvent): boolean {
+    // A click while scrolled back is the terminal's, since a mouse report would be for a row of the
+    // app's live screen, not what was clicked
+    const buffer = this._bufferService.buffer;
+    if (buffer.ydisp !== buffer.ybase) {
+      return true;
+    }
+
     if (this._optionsService.rawOptions.mouseEventsRequireAlt && this._mouseStateService.areMouseEventsActive) {
       return !event.altKey;
     }
@@ -452,18 +479,22 @@ export class SelectionService extends Disposable implements ISelectionService {
    */
   public handleMouseDown(event: MouseEvent): void {
     this._mouseDownTimeStamp = event.timeStamp;
+    this._isMouseDownOnLiveScreen = this._bufferService.buffer.ybase === this._bufferService.buffer.ydisp;
     // If we have selection, we want the context menu on right click even if the
     // terminal is in mouse mode.
-    if (event.button === 2 && this.hasSelection) {
+    if (isContextMenuClick(event) && this.hasSelection) {
       return;
     }
 
-    // Only action the primary button
-    if (event.button !== 0) {
+    // Only action the primary button, not a click that opens a context menu, such as Control+click
+    // on macOS
+    if (event.button !== 0 || isContextMenuClick(event)) {
       return;
     }
 
-    if (this._optionsService.rawOptions.mouseEventsRequireAlt && this._mouseStateService.areMouseEventsActive && event.altKey) {
+    const buffer = this._bufferService.buffer;
+    if (this._optionsService.rawOptions.mouseEventsRequireAlt && this._mouseStateService.areMouseEventsActive && event.altKey
+      && buffer.ydisp === buffer.ybase) {
       return;
     }
 
@@ -724,19 +755,20 @@ export class SelectionService extends Disposable implements ISelectionService {
 
     this._removeMouseDownListeners();
 
-    if (this.selectionText.length <= 1 && timeElapsed < Constants.ALT_CLICK_MOVE_CURSOR_TIME && event.altKey && this._optionsService.rawOptions.altClickMovesCursor) {
-      if (this._bufferService.buffer.ybase === this._bufferService.buffer.ydisp) {
-        const coordinates = this._mouseCoordsService.getCoords(
-          event,
-          this._element,
-          this._bufferService.cols,
-          this._bufferService.rows,
-          false
-        );
-        if (coordinates && coordinates[0] !== undefined && coordinates[1] !== undefined) {
-          const sequence = moveToCellSequence(coordinates[0] - 1, coordinates[1] - 1, this._bufferService, this._coreService.decPrivateModes.applicationCursorKeys);
-          this._coreService.triggerDataEvent(sequence, true);
-        }
+    // An Alt click on the live screen moves the cursor; in scrollback, where it can't, it selects,
+    // also when the view reaches the live screen before the release
+    if (this.selectionText.length <= 1 && timeElapsed < Constants.ALT_CLICK_MOVE_CURSOR_TIME && event.altKey && this._optionsService.rawOptions.altClickMovesCursor
+      && this._isMouseDownOnLiveScreen && this._bufferService.buffer.ybase === this._bufferService.buffer.ydisp) {
+      const coordinates = this._mouseCoordsService.getCoords(
+        event,
+        this._element,
+        this._bufferService.cols,
+        this._bufferService.rows,
+        false
+      );
+      if (coordinates && coordinates[0] !== undefined && coordinates[1] !== undefined) {
+        const sequence = moveToCellSequence(coordinates[0] - 1, coordinates[1] - 1, this._bufferService, this._coreService.decPrivateModes.applicationCursorKeys);
+        this._coreService.triggerDataEvent(sequence, true);
       }
     } else {
       this._fireEventIfSelectionChanged();

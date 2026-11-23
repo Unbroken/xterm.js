@@ -63,6 +63,14 @@ export interface IMouseService {
 
   bindMouse(target: IMouseServiceTarget, register: (disposable: IDisposable) => void, focus: () => void): void;
   reset(): void;
+  /**
+   * Whether the last mouse press was of the right button and went to the app as a report, until
+   * the context menu of that click clears it.
+   */
+  readonly isRightPressReported: boolean;
+  clearRightPressReported(): void;
+  /** Whether the last mouse press went to the app as a report. */
+  readonly isPressReported: boolean;
 }
 export interface IMouseServiceTarget {
   element: HTMLElement;

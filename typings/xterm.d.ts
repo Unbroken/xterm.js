@@ -1003,6 +1003,15 @@ declare module '@xterm/xterm' {
     readonly modes: IModes;
 
     /**
+     * Whether the last mouse press went to the app as a mouse report, which a press while the
+     * terminal is scrolled back doesn't, since its report would be for a row of the app's live
+     * screen. Its click belongs to the app, as in other terminals, so an embedder shouldn't also
+     * act on it, such as by showing a context menu, pasting, or opening a link that the app sees a
+     * modifier for. The terminal itself doesn't select a word for such a right click.
+     */
+    readonly isPressReported: boolean;
+
+    /**
      * The dimensions of the terminal. This will be undefined before
      * {@link open} is called.
      */

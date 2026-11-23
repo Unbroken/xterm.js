@@ -51,6 +51,7 @@ export class MockTerminal implements ITerminal {
   public onResize!: IEvent<{ cols: number, rows: number }>;
   public onDimensionsChange!: IEvent<IRenderDimensionsApi>;
   public dimensions: IRenderDimensionsApi | undefined;
+  public isPressReported = false;
   public markers!: IMarker[];
   public linkifier: ILinkifier2 | undefined;
   public mouseStateService!: IMouseStateService;
@@ -390,6 +391,11 @@ export class MockCharSizeService implements ICharSizeService {
 
 export class MockMouseService implements IMouseService {
   public serviceBrand: undefined;
+  public isRightPressReported = false;
+  public clearRightPressReported(): void {
+    this.isRightPressReported = false;
+  }
+  public isPressReported = false;
   public getCoords(event: {clientX: number, clientY: number}, element: HTMLElement, colCount: number, rowCount: number, isSelection?: boolean): [number, number] | undefined {
     throw new Error('Not implemented');
   }

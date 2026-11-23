@@ -115,7 +115,7 @@ interface ITerminalProxyCustomMethods {
 
 type TerminalProxyAsyncPropOverrides = 'cols' | 'rows' | 'modes';
 type TerminalProxyAsyncMethodOverrides = 'hasSelection' | 'getSelection' | 'getSelectionPosition' | 'registerMarker' | 'registerDecoration';
-type TerminalProxyCustomOverrides = 'buffer' | 'dimensions' | (
+type TerminalProxyCustomOverrides = 'buffer' | 'dimensions' | 'isPressReported' | (
   // The below are not implemented yet
   'element' |
   'screenElement' |

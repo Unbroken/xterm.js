@@ -3,6 +3,8 @@
  * @license MIT
  */
 
+import { isMac } from '../../common/Platform';
+
 export function getCoordsRelativeToElement(window: Pick<Window, 'getComputedStyle'>, event: {clientX: number, clientY: number}, element: HTMLElement): [number, number] {
   const rect = element.getBoundingClientRect();
   const elementStyle = window.getComputedStyle(element);
@@ -47,4 +49,12 @@ export function getCoords(window: Pick<Window, 'getComputedStyle'>, event: Pick<
   coords[1] = Math.min(Math.max(coords[1], 1), rowCount);
 
   return coords;
+}
+
+/**
+ * Whether a mouse event is of a click that opens a context menu: a right click, or Control+click on
+ * macOS, which the app gets as a Control+left click.
+ */
+export function isContextMenuClick(ev: MouseEvent): boolean {
+  return ev.button === 2 || (isMac && ev.button === 0 && ev.ctrlKey);
 }

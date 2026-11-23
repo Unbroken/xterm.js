@@ -23,6 +23,7 @@ export interface ITerminal extends InternalPassthroughApis, ICoreTerminal {
   options: Required<ITerminalOptions>;
 
   readonly dimensions: IRenderDimensionsApi | undefined;
+  readonly isPressReported: boolean;
 
   onBlur: IEvent<void>;
   onFocus: IEvent<void>;

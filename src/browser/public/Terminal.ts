@@ -127,6 +127,9 @@ export class Terminal extends Disposable implements ITerminalApi {
   public get dimensions(): IRenderDimensions | undefined {
     return this._core.dimensions;
   }
+  public get isPressReported(): boolean {
+    return this._core.isPressReported;
+  }
   public get options(): Required<ITerminalOptions> {
     return this._publicOptions;
   }

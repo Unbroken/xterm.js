@@ -3,6 +3,7 @@
  * @license MIT
  */
 import { test } from '@playwright/test';
+import { deepStrictEqual } from 'assert';
 import { createTestContext, ITestContext, openTerminal, pollFor } from './TestUtils';
 
 let ctx: ITestContext;
@@ -1429,4 +1430,74 @@ test.describe('Mouse Tracking Tests', () => {
    * currently not possible due to a limitation of the playwright mouse interface
    * (saves only the last one pressed)
    */
+});
+
+test.describe('Right click with mouse reporting', () => {
+  test.afterEach(async () => {
+    await resetMouseModes();
+    await ctx.proxy.setOption('rightClickSelectsWord', false);
+    await ctx.proxy.setOption('disableStdin', false);
+    await ctx.page.keyboard.up('Shift');
+  });
+
+  test('selects a word only while no app has mouse reporting on, or with Shift', async ({ browserName }) => {
+    await resetMouseModes();
+    // Captures the reports, also when this test runs alone
+    await ctx.page.evaluate(`
+      window.calls = window.calls || [];
+      if (!window.rightClickReports) {
+        window.rightClickReports = true;
+        window.term.onData(e => window.calls.push(e));
+        window.term.onBinary(e => window.calls.push(e));
+      }
+    `);
+    await ctx.proxy.setOption('rightClickSelectsWord', true);
+    const rightClick = async (shift: boolean): Promise<string> => {
+      await ctx.proxy.clearSelection();
+      if (shift) {
+        await ctx.page.keyboard.down('Shift');
+      }
+      await ctx.page.mouse.click(...(await cellPos(7, 0)) as [number, number], { button: 'right' });
+      if (shift) {
+        await ctx.page.keyboard.up('Shift');
+      }
+      const reported = await ctx.page.evaluate(`window.term.isPressReported`);
+      return `${await ctx.proxy.getSelection()}|${reported}`;
+    };
+    await ctx.proxy.write('\x1b[H\x1b[2Jhello world');
+    const plain = await rightClick(false);
+    // X10 mouse reporting, which reports presses only, so no release report clears a selection
+    await ctx.proxy.write('\x1b[?9h');
+    const reported = await rightClick(false);
+    const shifted = await rightClick(true);
+    // With the app's input disabled, the press isn't reported
+    await ctx.proxy.setOption('disableStdin', true);
+    const unreported = await rightClick(false);
+    await ctx.proxy.setOption('disableStdin', false);
+    // Nor while scrolled back, where the click stays the terminal's, also with SGR any-event
+    // reporting, whose motion reports would scroll to the live screen
+    await ctx.proxy.write('\x1b[?9l' + 'hello world\r\n'.repeat(80) + '\x1b[?1003h\x1b[?1006h');
+    await ctx.proxy.scrollLines(-3);
+    await ctx.page.evaluate(`window.calls = [];`);
+    const scrolledBack = `${await rightClick(false)}|${(await ctx.page.evaluate(`window.calls`) as unknown[]).length}`;
+    // A double click there selects a word too
+    await ctx.proxy.clearSelection();
+    await ctx.page.mouse.dblclick(...(await cellPos(1, 0)) as [number, number]);
+    const scrolledBackDoubleClick = `${await ctx.proxy.getSelection()}|${(await ctx.page.evaluate(`window.calls`) as unknown[]).length}`;
+    await ctx.proxy.scrollToBottom();
+    // The selection, and whether the press went to the app, which Shift prevents except on macOS,
+    // where it doesn't force selection. Firefox, which handles the right click on the press,
+    // predicts the report from the mouse mode only.
+    deepStrictEqual(
+      { plain, reported, shifted, unreported, scrolledBack, scrolledBackDoubleClick },
+      {
+        plain: 'world|false',
+        reported: '|true',
+        shifted: `world|${process.platform === 'darwin'}`,
+        unreported: browserName === 'firefox' ? '|false' : 'world|false',
+        scrolledBack: 'world|false|0',
+        scrolledBackDoubleClick: 'hello|0'
+      }
+    );
+  });
 });

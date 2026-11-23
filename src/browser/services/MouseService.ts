@@ -12,6 +12,7 @@ import { ICoreBrowserService, IMouseCoordsService, IMouseService, IMouseServiceT
 import { Gesture, EventType as GestureEventType, IGestureEvent } from '../scrollable/touch';
 import { type IMouseWheelEvent, StandardWheelEvent } from '../scrollable/mouseEvent';
 import { MouseWheelClassifier } from '../scrollable/scrollableElement';
+import { isContextMenuClick } from '../input/Mouse';
 
 /** How long a pause between wheel events ends a gesture, in milliseconds. */
 const WHEEL_GESTURE_PAUSE = 1000;
@@ -34,6 +35,17 @@ export class MouseService implements IMouseService {
   public serviceBrand: undefined;
 
   private _lastEvent: ICoreMouseEvent | null = null;
+  private _isRightPressReported = false;
+  /** Ends a reported right press at the next right press anywhere. */
+  private readonly _rightPressEndListener = new MutableDisposable<IDisposable>();
+
+  private _isPressReported = false;
+  public get isRightPressReported(): boolean { return this._isRightPressReported; }
+  public get isPressReported(): boolean { return this._isPressReported; }
+  public clearRightPressReported(): void {
+    this._isRightPressReported = false;
+    this._rightPressEndListener.clear();
+  }
   /** Distinguishes a physical mouse wheel from continuous scrolling such as a trackpad's. */
   private _wheelClassifier = new MouseWheelClassifier();
   private _wheelPartialPixels: number = 0;
@@ -103,16 +115,25 @@ export class MouseService implements IMouseService {
      * "Always on" event listeners.
      */
     register(addDisposableListener(element, 'mousedown', (ev: MouseEvent) => this._handleMouseDown(ctx, ev)));
+    register(this._rightPressEndListener);
     register(addDisposableListener(element, 'wheel', (ev: WheelEvent) => this._handlePassiveWheel(ctx, ev), { passive: false }));
     register(Gesture.addTarget(target.screenElement));
     register(addDisposableListener(target.screenElement, GestureEventType.START, () => this._handleTouchStart()));
     register(addDisposableListener(target.screenElement, GestureEventType.CHANGE, (e: IGestureEvent) => this._handleTouchChange(ctx, e)));
   }
 
+  /** Sends a mouse event to the app, returning whether a report went to it. */
   private _sendEvent(ctx: IMouseBindContext, ev: MouseEvent | WheelEvent): boolean {
     // Every wheel event is a sample of the device, even one without a report
     if (ev.type === 'wheel') {
       this._recordWheelEvent(ev as WheelEvent);
+    }
+
+    // Motion with no button held isn't reported while scrolled back, where clicks are the
+    // terminal's, since its report would be for the app's live screen and scroll to it
+    const buffer = this._bufferService.buffer;
+    if (ev.type === 'mousemove' && !ev.buttons && buffer.ydisp !== buffer.ybase) {
+      return false;
     }
 
     // Get mouse coordinates
@@ -191,9 +212,9 @@ export class MouseService implements IMouseService {
       && this._optionsService.rawOptions.mouseEventsRequireAlt
       && this._mouseStateService.areMouseEventsActive;
 
-    let sent = false;
+    let reported = false;
     for (let i = 0; i < reportCount; i++) {
-      sent = this._triggerMouseEvent({
+      reported = this._reportMouseEvent({
         col: pos.col,
         row: pos.row,
         x: pos.x,
@@ -203,9 +224,9 @@ export class MouseService implements IMouseService {
         ctrl: ev.ctrlKey,
         alt: stripAltFromReport ? false : ev.altKey,
         shift: ev.shiftKey
-      }) || sent;
+      }) === true || reported;
     }
-    return sent;
+    return reported;
   }
 
   private _handleMouseUp(ctx: IMouseBindContext, ev: MouseEvent): void {
@@ -241,6 +262,7 @@ export class MouseService implements IMouseService {
   private _handleMouseDown(ctx: IMouseBindContext, ev: MouseEvent): void {
     ev.preventDefault();
     ctx.focus();
+    this._isPressReported = false;
 
     // Don't send the mouse button to the pty if mouse events are disabled or
     // if the selection manager is having selection forced (ie. a modifier is
@@ -249,7 +271,28 @@ export class MouseService implements IMouseService {
       return;
     }
 
-    this._sendEvent(ctx, ev);
+    const isReported = this._sendEvent(ctx, ev);
+    this._isPressReported = isReported;
+    // Another button's press doesn't end a right click, whose context menu may come on release,
+    // while a right press anywhere, such as one that starts outside the terminal and whose context
+    // menu comes here, does. Use the element's current document in case it moved to another window.
+    if (isContextMenuClick(ev)) {
+      this.clearRightPressReported();
+      this._isRightPressReported = isReported;
+      if (isReported) {
+        const { element, document: targetDocument } = ctx.target;
+        const listener = addDisposableListener(element.ownerDocument ?? targetDocument, 'mousedown', (e: MouseEvent) => {
+          if (isContextMenuClick(e)) {
+            this.clearRightPressReported();
+          }
+        }, true);
+        this._rightPressEndListener.value = listener;
+        // The terminal may have been disposed while the report was handled
+        if (this._rightPressEndListener.value !== listener) {
+          listener.dispose();
+        }
+      }
+    }
 
     // Register additional global handlers which should keep reporting outside
     // of the terminal element.
@@ -549,25 +592,34 @@ export class MouseService implements IMouseService {
    * to fulfill protocol and encoding restrictions.
    */
   private _triggerMouseEvent(e: ICoreMouseEvent): boolean {
+    return this._reportMouseEvent(e) !== undefined;
+  }
+
+  /**
+   * Triggers a mouse event, returning undefined when it's dropped, or whether a report went to the
+   * app: the default encoding has no report past its last column, and nothing goes to the app while
+   * its input is disabled, as a listener of the report could make it.
+   */
+  private _reportMouseEvent(e: ICoreMouseEvent): boolean | undefined {
     // range check for col/row, written so that NaN fails the check
     if (!(e.col >= 0 && e.col < this._bufferService.cols
       && e.row >= 0 && e.row < this._bufferService.rows)) {
-      return false;
+      return undefined;
     }
     // pixel coords are not range checked, but must be finite (SGR_PIXELS)
     if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) {
-      return false;
+      return undefined;
     }
 
     // filter nonsense combinations of button + action
     if (e.button === CoreMouseButton.WHEEL && e.action === CoreMouseAction.MOVE) {
-      return false;
+      return undefined;
     }
     if (e.button === CoreMouseButton.NONE && e.action !== CoreMouseAction.MOVE) {
-      return false;
+      return undefined;
     }
     if (e.button !== CoreMouseButton.WHEEL && (e.action === CoreMouseAction.LEFT || e.action === CoreMouseAction.RIGHT)) {
-      return false;
+      return undefined;
     }
 
     // report 1-based coords
@@ -579,16 +631,17 @@ export class MouseService implements IMouseService {
       && this._lastEvent
       && this._equalEvents(this._lastEvent, e, this._mouseStateService.isPixelEncoding)
     ) {
-      return false;
+      return undefined;
     }
 
     // apply protocol restrictions
     if (!this._mouseStateService.restrictMouseEvent(e)) {
-      return false;
+      return undefined;
     }
 
     // encode report and send
     const report = this._mouseStateService.encodeMouseEvent(e);
+    const reported = !!report && !this._optionsService.rawOptions.disableStdin;
     if (report) {
       if (this._mouseStateService.isDefaultEncoding) {
         this._coreService.triggerBinaryEvent(report);
@@ -598,7 +651,7 @@ export class MouseService implements IMouseService {
     }
 
     this._lastEvent = e;
-    return true;
+    return reported;
   }
 
   private _explainEvents(events: CoreMouseEventType): { [event: string]: boolean } {

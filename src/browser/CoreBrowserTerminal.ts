@@ -38,6 +38,7 @@ import { CoreBrowserService } from './services/CoreBrowserService';
 import { LinkProviderService } from './services/LinkProviderService';
 import { MouseCoordsService } from './services/MouseCoordsService';
 import { MouseEventCssClasses, MouseService } from './services/MouseService';
+import { isContextMenuClick } from './input/Mouse';
 import { RenderService } from './services/RenderService';
 import { SelectionService } from './services/SelectionService';
 import { ICharSizeService, ICharacterJoinerService, ICoreBrowserService, IKeyboardService, ILinkProviderService, IMouseCoordsService, IMouseService, IRenderService, ISelectionService, IThemeService } from './services/Services';
@@ -147,6 +148,10 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
   public get onWillOpen(): IEvent<HTMLElement> { return this._onWillOpen.event; }
   private readonly _onDimensionsChange = this._register(new Emitter<IRenderDimensionsApi>());
   public readonly onDimensionsChange = this._onDimensionsChange.event;
+
+  public get isPressReported(): boolean {
+    return !!this._mouseService?.isPressReported;
+  }
 
   public get dimensions(): IRenderDimensionsApi | undefined {
     if (!this._renderService) {
@@ -379,17 +384,30 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
     this._register(addDisposableListener(this.textarea!, 'paste', pasteHandlerWrapper));
     this._register(addDisposableListener(this.element!, 'paste', pasteHandlerWrapper));
 
-    // Handle right click context menus
+    // Handle right click context menus. A right click whose press went to the app as a report
+    // goes to the app, as in other terminals, so it doesn't select a word, unless Shift asks for
+    // the terminal's own handling.
+    const handleRightClick = (event: MouseEvent, reportedToApp: boolean): void => {
+      rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, this.options.rightClickSelectsWord && (event.shiftKey || !reportedToApp));
+    };
     if (Browser.isFirefox) {
-      // Firefox doesn't appear to fire the contextmenu event on right click
+      // Firefox doesn't appear to fire the contextmenu event on right click. This runs before the
+      // mouse service handles the press, so it tells whether the press will be reported.
       this._register(addDisposableListener(this.element!, 'mousedown', (event: MouseEvent) => {
         if (event.button === 2) {
-          rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, this.options.rightClickSelectsWord);
+          handleRightClick(event, this.mouseStateService.areMouseEventsActive && !this._selectionService!.shouldForceSelection(event));
         }
       }));
     } else {
+      // A context menu from the keyboard doesn't follow the last press, nor end it. The context
+      // menu of a click clears its press, so that one that started elsewhere, which this terminal
+      // didn't see, doesn't take a previous press for its own.
       this._register(addDisposableListener(this.element!, 'contextmenu', (event: MouseEvent) => {
-        rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, this.options.rightClickSelectsWord);
+        const isMouseContextMenu = isContextMenuClick(event);
+        handleRightClick(event, isMouseContextMenu && !!this._mouseService?.isRightPressReported);
+        if (isMouseContextMenu) {
+          this._mouseService?.clearRightPressReported();
+        }
       }));
     }
 
