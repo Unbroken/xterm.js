@@ -194,6 +194,14 @@ declare module '@xterm/headless' {
     rightClickSelectsWord?: boolean;
 
     /**
+     * Whether a right click on the selection still goes to an app with mouse
+     * reporting on. By default it doesn't, so that a context menu can copy the
+     * selection, which the app's report would clear; an embedder that shows
+     * no context menu can send it to the app.
+     */
+    rightClickOnSelectionGoesToApp?: boolean;
+
+    /**
      * Whether screen reader support is enabled. When on this will expose
      * supporting elements in the DOM to support NVDA on Windows and VoiceOver
      * on macOS.

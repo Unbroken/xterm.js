@@ -234,6 +234,7 @@ export interface ITerminalOptions {
   reflowCursorLine?: boolean;
   rescaleOverlappingGlyphs?: boolean;
   rightClickSelectsWord?: boolean;
+  rightClickOnSelectionGoesToApp?: boolean;
   rows?: number;
   showCursorImmediately?: boolean;
   screenReaderMode?: boolean;

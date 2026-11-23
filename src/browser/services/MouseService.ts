@@ -40,6 +40,9 @@ export class MouseService implements IMouseService {
   private readonly _rightPressEndListener = new MutableDisposable<IDisposable>();
 
   private _isPressReported = false;
+  // The buttons, as bits of MouseEvent.buttons, of right presses kept from the app for the context
+  // menu, whose drags and releases mustn't go to the app either
+  private _menuButtons = 0;
   public get isRightPressReported(): boolean { return this._isRightPressReported; }
   public get isPressReported(): boolean { return this._isPressReported; }
   public clearRightPressReported(): void {
@@ -156,10 +159,12 @@ export class MouseService implements IMouseService {
             but = ev.button < 3 ? ev.button : CoreMouseButton.NONE;
           }
         } else {
-          // according to MDN buttons only reports up to button 5 (AUX2)
-          but = ev.buttons & 1 ? CoreMouseButton.LEFT :
-            ev.buttons & 4 ? CoreMouseButton.MIDDLE :
-              ev.buttons & 2 ? CoreMouseButton.RIGHT :
+          // according to MDN buttons only reports up to button 5 (AUX2); not a button kept from the
+          // app for the context menu
+          const buttons = ev.buttons & ~this._menuButtons;
+          but = buttons & 1 ? CoreMouseButton.LEFT :
+            buttons & 4 ? CoreMouseButton.MIDDLE :
+              buttons & 2 ? CoreMouseButton.RIGHT :
                 CoreMouseButton.NONE; // fallback to NONE
         }
         break;
@@ -232,7 +237,11 @@ export class MouseService implements IMouseService {
   }
 
   private _handleMouseUp(ctx: IMouseBindContext, ev: MouseEvent): void {
-    this._sendEvent(ctx, ev);
+    if (this._menuButtons & buttonsMask(ev.button)) {
+      this._menuButtons &= ~buttonsMask(ev.button);
+    } else {
+      this._sendEvent(ctx, ev);
+    }
     if (!ev.buttons) {
       // if no other button is held remove global handlers
       ctx.mouseupListener.clear();
@@ -248,8 +257,8 @@ export class MouseService implements IMouseService {
   }
 
   private _handleMouseDrag(ctx: IMouseBindContext, ev: MouseEvent): void {
-    // deal only with move while a button is held
-    if (ev.buttons) {
+    // deal only with move while a button is held, other than one kept from the app for the menu
+    if (ev.buttons & ~this._menuButtons) {
       this._sendEvent(ctx, ev);
     }
   }
@@ -265,11 +274,20 @@ export class MouseService implements IMouseService {
     ev.preventDefault();
     ctx.focus();
     this._isPressReported = false;
+    // Another button's press doesn't end a right press kept for the menu, whose release comes later
+    this._menuButtons &= ~buttonsMask(ev.button);
 
     // Don't send the mouse button to the pty if mouse events are disabled or
     // if the selection manager is having selection forced (ie. a modifier is
     // held).
     if (!this._mouseStateService.areMouseEventsActive || this._selectionService.shouldForceSelection(ev)) {
+      return;
+    }
+
+    // A right click on a selection, such as one made with Option, opens the context menu to copy
+    // it, as the selection keeps it for, instead of going to the app, whose report would clear it
+    if (isContextMenuClick(ev) && !this._optionsService.rawOptions.rightClickOnSelectionGoesToApp && this._selectionService.isClickInSelection(ev)) {
+      this._menuButtons |= buttonsMask(ev.button);
       return;
     }
 
@@ -744,5 +762,17 @@ export class AltMouseCursorController implements IDisposable {
     } else {
       this._element.classList.remove(MouseEventCssClasses.ENABLE_MOUSE_EVENTS);
     }
+  }
+}
+
+/**
+ * The bit of MouseEvent.buttons for a MouseEvent.button, or none for other buttons.
+ */
+function buttonsMask(button: number): number {
+  switch (button) {
+    case 0: return 1;
+    case 1: return 4;
+    case 2: return 2;
+    default: return 0;
   }
 }

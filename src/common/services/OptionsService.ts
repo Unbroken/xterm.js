@@ -52,6 +52,7 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
   reflowCursorLine: false,
   rescaleOverlappingGlyphs: false,
   rightClickSelectsWord: isMac,
+  rightClickOnSelectionGoesToApp: false,
   windowOptions: {},
   windowsPty: {},
   wordSeparator: ' ()[]{}\',"`',

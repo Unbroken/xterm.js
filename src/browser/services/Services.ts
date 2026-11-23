@@ -141,6 +141,7 @@ export interface ISelectionService {
   refresh(isLinuxMouseSelection?: boolean): void;
   handleMouseDown(event: MouseEvent): void;
   isCellInSelection(x: number, y: number): boolean;
+  isClickInSelection(event: MouseEvent): boolean;
 }
 
 export const ICharacterJoinerService = createDecorator<ICharacterJoinerService>('CharacterJoinerService');

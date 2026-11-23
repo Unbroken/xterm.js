@@ -1450,12 +1450,194 @@ test.describe('Selection with mouse reporting', () => {
   });
 });
 
+test.describe('Option selection on macOS', () => {
+  test.afterEach(async () => {
+    await resetMouseModes();
+    await ctx.proxy.setOption('macOptionClickForcesSelection', false);
+    await ctx.page.keyboard.up('Alt');
+    await ctx.page.keyboard.up('Control');
+  });
+
+  test('selects a column without mouse reporting, and a regular selection with it', async () => {
+    test.skip(process.platform !== 'darwin', 'Option forces selection only on macOS');
+    await resetMouseModes();
+    // Cells wide enough that the pointer lands in the left half of the first one
+    await ctx.proxy.setOption('fontSize', 14);
+    await ctx.proxy.setOption('macOptionClickForcesSelection', true);
+    await ctx.page.evaluate(`window.optionData = []; window.term.onData(e => window.optionData.push(e)); window.term.onBinary(e => window.optionData.push(e));`);
+    const optionDrag = async (toCol = 1): Promise<string> => {
+      await ctx.proxy.clearSelection();
+      await mouseMove(0, 0);
+      await ctx.page.keyboard.down('Alt');
+      await mouseDown('left');
+      await mouseMove(toCol, 1);
+      await mouseUp('left');
+      await ctx.page.keyboard.up('Alt');
+      return ctx.proxy.getSelection();
+    };
+    await ctx.proxy.write('\x1b[H\x1b[2Jabc\r\ndef');
+    const shell = await optionDrag();
+    // A selection made afterwards isn't a column, which it would be from (1, 0) to (2, 1)
+    const cols = await ctx.page.evaluate(`window.term.cols`) as number;
+    await ctx.page.evaluate(`window.term.select(1, 0, ${cols + 1})`);
+    const selectedAfter = await ctx.proxy.getSelection();
+    // A quick Option drag down a column, whose column selection is empty, doesn't move the cursor
+    await ctx.page.evaluate(`window.optionData = []`);
+    await optionDrag(0);
+    const verticalDragInput = await ctx.page.evaluate(`window.optionData.length`);
+    await ctx.proxy.write('\x1b[?1000h\x1b[?1006h');
+    const app = await optionDrag();
+    // A right click on that selection, also on the right half of its last cell, keeps it, for the
+    // context menu, instead of going to the app, while one elsewhere still goes to the app
+    await ctx.page.evaluate(`window.optionData = []`);
+    const [lastCellX, lastCellY] = await cellPos(0, 1);
+    const cellWidth = await ctx.page.evaluate(`window.term.dimensions.css.cell.width`) as number;
+    await ctx.page.mouse.click(lastCellX - 2 + cellWidth * 0.8, lastCellY, { button: 'right' });
+    const rightClickOnSelection = `${await ctx.proxy.getSelection()}|${await ctx.page.evaluate(`window.optionData.length`)}`;
+    await ctx.page.mouse.click(...(await cellPos(20, 1)) as [number, number], { button: 'right' });
+    const rightClickElsewhereReported = await ctx.page.evaluate(`window.optionData.length > 0`);
+    // An embedder that shows no context menu sends a right click on the selection to the app
+    // A right click past the grid, such as in spare space of the element, isn't on its last cell,
+    // even with the selection covering it
+    await ctx.page.evaluate(`window.term.selectAll(); window.optionData = []`);
+    await ctx.page.evaluate(`(() => {
+      const screen = window.term.element.querySelector('.xterm-screen');
+      const rect = screen.getBoundingClientRect();
+      const options = { bubbles: true, button: 2, buttons: 2, clientX: rect.right + 3, clientY: rect.bottom + 3 };
+      screen.dispatchEvent(new MouseEvent('mousedown', options));
+      screen.dispatchEvent(new MouseEvent('mouseup', { ...options, buttons: 0 }));
+    })()`);
+    const rightClickPastGridReported = await ctx.page.evaluate(`window.optionData.length > 0`);
+    await ctx.page.evaluate(`window.term.select(0, 0, window.term.cols + 1)`);
+    await ctx.page.evaluate(`window.optionData = []; window.term.options.rightClickOnSelectionGoesToApp = true`);
+    await ctx.page.mouse.click(lastCellX - 2 + cellWidth * 0.8, lastCellY, { button: 'right' });
+    const rightClickOnSelectionToAppReported = await ctx.page.evaluate(`window.optionData.length > 0`);
+    await ctx.page.evaluate(`window.term.options.rightClickOnSelectionGoesToApp = false`);
+    await ctx.page.evaluate(`window.optionData = []`);
+    await ctx.proxy.clearSelection();
+    // An Option click there doesn't move the cursor with arrow keys sent to the app
+    await ctx.page.evaluate(`window.calls = []; window.optionClickData = []; window.term.onData(e => window.optionClickData.push(e));`);
+    await ctx.page.keyboard.down('Alt');
+    await ctx.page.mouse.click(...(await cellPos(2, 1)) as [number, number]);
+    await ctx.page.keyboard.up('Alt');
+    const optionClickInput = await ctx.page.evaluate(`window.optionClickData.length`);
+    // An Option+right click still goes to the app
+    await ctx.page.evaluate(`window.optionData = []`);
+    await ctx.page.keyboard.down('Alt');
+    await ctx.page.mouse.click(...(await cellPos(2, 1)) as [number, number], { button: 'right' });
+    await ctx.page.keyboard.up('Alt');
+    const optionRightClickReported = await ctx.page.evaluate(`window.optionData.length > 0`);
+    // So does a Control+Option click, a secondary click on macOS
+    await ctx.page.evaluate(`window.optionData = []`);
+    await ctx.page.keyboard.down('Control');
+    await ctx.page.keyboard.down('Alt');
+    await ctx.page.mouse.click(...(await cellPos(2, 1)) as [number, number]);
+    await ctx.page.keyboard.up('Alt');
+    await ctx.page.keyboard.up('Control');
+    const controlOptionClickReported = await ctx.page.evaluate(`window.optionData.length > 0`);
+    deepStrictEqual(
+      { shell, selectedAfter, verticalDragInput, app, rightClickOnSelection, rightClickElsewhereReported, rightClickPastGridReported, rightClickOnSelectionToAppReported, optionClickInput, optionRightClickReported, controlOptionClickReported },
+      {
+        shell: 'a\nd', selectedAfter: 'bc\nde', verticalDragInput: 0, app: 'abc\nd', rightClickOnSelection: 'abc\nd|0', rightClickElsewhereReported: true, rightClickPastGridReported: true,
+        rightClickOnSelectionToAppReported: true,
+        optionClickInput: 0,
+        optionRightClickReported: true, controlOptionClickReported: true
+      }
+    );
+  });
+});
+
 test.describe('Right click with mouse reporting', () => {
   test.afterEach(async () => {
     await resetMouseModes();
     await ctx.proxy.setOption('rightClickSelectsWord', false);
     await ctx.proxy.setOption('disableStdin', false);
     await ctx.page.keyboard.up('Shift');
+  });
+
+  test('keeps both the press and release of a right click on the selection from the app', async () => {
+    await resetMouseModes();
+    await ctx.page.evaluate(`
+      // Only mouse reports, not what earlier tests' listeners send
+      window.menuClickData = [];
+      if (!window.menuClickReports) {
+        window.menuClickReports = true;
+        window.term.onData(e => e.startsWith('\\x1b') && window.menuClickData.push(e));
+      }
+    `);
+    await ctx.proxy.write('\x1b[H\x1b[2Jhello world\x1b[?1002h\x1b[?1006h');
+    // A left drag in the app, during which the selection is made and right-clicked
+    await ctx.page.mouse.move(...(await cellPos(20, 2)) as [number, number]);
+    await ctx.page.mouse.down();
+    await ctx.page.mouse.move(...(await cellPos(1, 0)) as [number, number]);
+    await ctx.page.evaluate(`window.term.select(0, 0, 5); window.menuClickData = []`);
+    const selected = await ctx.proxy.getSelection();
+    await ctx.page.mouse.down({ button: 'right' });
+    await ctx.page.mouse.up({ button: 'right' });
+    const duringRightClick = await ctx.page.evaluate(`window.menuClickData.join('')`);
+    await ctx.page.evaluate(`window.menuClickData = []`);
+    await ctx.page.mouse.up();
+    const leftRelease = await ctx.page.evaluate(`window.menuClickData.join('')`);
+    // A left press while the right one is held doesn't let its release through
+    await ctx.page.evaluate(`window.term.select(0, 0, 5); window.menuClickData = []`);
+    await ctx.page.mouse.down({ button: 'right' });
+    await ctx.page.mouse.down();
+    await ctx.page.mouse.up({ button: 'right' });
+    await ctx.page.mouse.up();
+    const leftPressDuringRightClick = await ctx.page.evaluate(`window.menuClickData.join('')`);
+    // Nor does moving with only the right button held after releasing the left one
+    await ctx.page.evaluate(`window.menuClickData = []`);
+    await ctx.page.mouse.down();
+    await ctx.page.evaluate(`window.term.select(0, 0, 5); window.menuClickData = []`);
+    await ctx.page.mouse.down({ button: 'right' });
+    await ctx.page.mouse.up();
+    await ctx.page.mouse.move(...(await cellPos(3, 0)) as [number, number]);
+    await ctx.page.mouse.up({ button: 'right' });
+    const rightDragAfterLeft = await ctx.page.evaluate(`window.menuClickData.join('')`);
+    // A drag with another button held reports that button, not the one kept for the menu, such as
+    // the left one of a Control+click on macOS
+    await ctx.page.evaluate(`window.term.select(0, 0, 5); window.menuClickData = []`);
+    await ctx.page.mouse.move(...(await cellPos(1, 0)) as [number, number]);
+    const menuButton = process.platform === 'darwin' ? 'left' : 'right';
+    const otherButton = menuButton === 'left' ? 'right' : 'left';
+    if (menuButton === 'left') {
+      await ctx.page.keyboard.down('Control');
+    }
+    await ctx.page.mouse.down({ button: menuButton });
+    await ctx.page.keyboard.up('Control');
+    await ctx.page.mouse.move(...(await cellPos(20, 2)) as [number, number]);
+    await ctx.page.mouse.down({ button: otherButton });
+    await ctx.page.mouse.move(...(await cellPos(21, 2)) as [number, number]);
+    await ctx.page.mouse.up({ button: otherButton });
+    await ctx.page.mouse.up({ button: menuButton });
+    const dragWithOtherButton = await ctx.page.evaluate(`window.menuClickData.join('')`);
+    // On macOS, both a right press and a Control+click kept for the menu stay kept after a reported
+    // middle button is released
+    let twoMenuButtons = '';
+    if (process.platform === 'darwin') {
+      await ctx.page.mouse.move(...(await cellPos(20, 2)) as [number, number]);
+      await ctx.page.mouse.down({ button: 'middle' });
+      await ctx.page.mouse.move(...(await cellPos(1, 0)) as [number, number]);
+      await ctx.page.evaluate(`window.term.select(0, 0, 5); window.menuClickData = []`);
+      await ctx.page.mouse.down({ button: 'right' });
+      await ctx.page.keyboard.down('Control');
+      await ctx.page.mouse.down();
+      await ctx.page.keyboard.up('Control');
+      await ctx.page.evaluate(`window.menuClickData = []`);
+      await ctx.page.mouse.up({ button: 'middle' });
+      await ctx.page.mouse.move(...(await cellPos(3, 0)) as [number, number]);
+      await ctx.page.mouse.up({ button: 'right' });
+      await ctx.page.mouse.up();
+      twoMenuButtons = await ctx.page.evaluate(`window.menuClickData.join('')`);
+    }
+    deepStrictEqual(
+      { selected, duringRightClick, leftRelease, leftPressDuringRightClick, rightDragAfterLeft, dragWithOtherButton, twoMenuButtons },
+      {
+        selected: 'hello', duringRightClick: '', leftRelease: '\x1b[<0;2;1m', leftPressDuringRightClick: '\x1b[<0;2;1M\x1b[<0;2;1m', rightDragAfterLeft: '\x1b[<0;2;1m',
+        dragWithOtherButton: process.platform === 'darwin' ? '\x1b[<2;21;3M\x1b[<34;22;3M\x1b[<2;22;3m' : '\x1b[<0;21;3M\x1b[<32;22;3M\x1b[<0;22;3m',
+        twoMenuButtons: process.platform === 'darwin' ? '\x1b[<1;2;1m' : ''
+      }
+    );
   });
 
   test('selects a word only while no app has mouse reporting on, or with Shift', async ({ browserName }) => {

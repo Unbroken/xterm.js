@@ -527,6 +527,9 @@ export class MockSelectionService implements ISelectionService {
   public isCellInSelection(x: number, y: number): boolean {
     return false;
   }
+  public isClickInSelection(event: MouseEvent): boolean {
+    return false;
+  }
 }
 
 export class MockThemeService implements IThemeService{

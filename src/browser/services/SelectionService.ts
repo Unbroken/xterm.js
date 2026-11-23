@@ -308,11 +308,32 @@ export class SelectionService extends Disposable implements ISelectionService {
   }
 
   /**
-   * Checks if the current click was inside the current selection
-   * @param event The mouse event
+   * The 0-based buffer cell that a mouse event is on, as a mouse report gives it, not the selection
+   * boundary nearest to it, or as link hover gives it: null outside the grid, and undefined without
+   * coordinates.
    */
-  private _isClickInSelection(event: MouseEvent): boolean {
-    const coords = this._getMouseBufferCoords(event);
+  private _getClickedCell(event: MouseEvent, isLinkCell: boolean = false): [number, number] | null | undefined {
+    // Not a click outside the grid, which a mouse report would put on the nearest cell; within a
+    // pixel of it counts, as browsers can round a click's coordinates at a grid that starts at a
+    // fraction of a pixel
+    const [x, y] = getCoordsRelativeToElement(this._coreBrowserService.window, event, this._screenElement);
+    const canvas = this._renderService.dimensions.css.canvas;
+    if (!(x > -1 && x < canvas.width + 1 && y > -1 && y < canvas.height + 1)) {
+      return Number.isFinite(x) && Number.isFinite(y) ? null : undefined;
+    }
+    if (isLinkCell) {
+      const cell = this._mouseCoordsService.getCoords(event, this._screenElement, this._bufferService.cols, this._bufferService.rows, false);
+      return cell && [cell[0] - 1, cell[1] - 1 + this._bufferService.buffer.ydisp];
+    }
+    const pos = this._mouseCoordsService.getMouseReportCoords(event, this._screenElement);
+    return pos && [pos.col, pos.row + this._bufferService.buffer.ydisp];
+  }
+
+  /**
+   * Whether the cell under the pointer is selected, also in a column selection.
+   */
+  public isClickInSelection(event: MouseEvent): boolean {
+    const coords = this._getClickedCell(event);
     const start = this._model.finalSelectionStart;
     const end = this._model.finalSelectionEnd;
 
@@ -320,6 +341,11 @@ export class SelectionService extends Disposable implements ISelectionService {
       return false;
     }
 
+    if (this._activeSelectionMode === SelectionMode.COLUMN) {
+      const startCol = Math.min(start[0], end[0]);
+      const endCol = Math.max(start[0], end[0]);
+      return coords[1] >= start[1] && coords[1] <= end[1] && coords[0] >= startCol && coords[0] < endCol;
+    }
     return this._areCoordsInSelection(coords, start, end);
   }
 
@@ -340,30 +366,35 @@ export class SelectionService extends Disposable implements ISelectionService {
   }
 
   /**
-   * Selects word at the current mouse event coordinates.
-   * @param event The mouse event.
-   */
-  /**
    * Whether the cell that a mouse event is on, not the selection boundary nearest to it, is in a
-   * link's 1-based buffer range. Without a cell, it counts as in the range.
+   * link's 1-based buffer range. Without coordinates, it counts as in the range, and outside the
+   * grid as not.
    */
   private _isClickInRange(event: MouseEvent, range: IBufferRange): boolean {
-    const cell = this._mouseCoordsService.getCoords(event, this._screenElement, this._bufferService.cols, this._bufferService.rows, false);
-    if (!cell) {
+    // The cell that the link's hover found it at
+    const cell = this._getClickedCell(event, true);
+    if (cell === undefined) {
       return true;
     }
-    const col = cell[0];
-    const row = cell[1] + this._bufferService.buffer.ydisp;
+    if (cell === null) {
+      return false;
+    }
+    const col = cell[0] + 1;
+    const row = cell[1] + 1;
     if (row < range.start.y || row > range.end.y) {
       return false;
     }
     return (row !== range.start.y || col >= range.start.x) && (row !== range.end.y || col <= range.end.x);
   }
 
-  private _selectWordAtCursor(event: MouseEvent, allowWhitespaceOnlySelection: boolean): boolean {
+  /**
+   * Selects word at the current mouse event coordinates, or at the cell the event is on.
+   * @param event The mouse event.
+   */
+  private _selectWordAtCursor(event: MouseEvent, allowWhitespaceOnlySelection: boolean, isAtClickedCell: boolean = false): boolean {
     // Check if there is a link under the cursor first and select that if so, not a link that the
     // view moved away from since it was hovered
-    const coords = this._getMouseBufferCoords(event);
+    const coords = isAtClickedCell ? this._getClickedCell(event) : this._getMouseBufferCoords(event);
     const range = this._linkifier.currentLink?.link?.range;
     if (range && this._isClickInRange(event, range)) {
       this._model.selectionStart = [range.start.x - 1, range.start.y - 1];
@@ -384,6 +415,8 @@ export class SelectionService extends Disposable implements ISelectionService {
    * Selects all text within the terminal.
    */
   public selectAll(): void {
+    // Not in the column mode of an earlier drag
+    this._activeSelectionMode = SelectionMode.NORMAL;
     this._model.isSelectAllActive = true;
     this.refresh();
     this._onSelectionChange.fire();
@@ -391,6 +424,7 @@ export class SelectionService extends Disposable implements ISelectionService {
 
   public selectLines(start: number, end: number): void {
     this._model.clearSelection();
+    this._activeSelectionMode = SelectionMode.NORMAL;
     start = Math.max(start, 0);
     end = Math.min(end, this._bufferService.buffer.lines.length - 1);
     this._model.selectionStart = [0, start];
@@ -466,8 +500,10 @@ export class SelectionService extends Disposable implements ISelectionService {
       return !event.altKey;
     }
 
+    // Option only for the primary button, which selects, and not with Control, which makes it a
+    // secondary click, so that the app still gets other clicks
     if (Browser.isMac) {
-      return event.altKey && this._optionsService.rawOptions.macOptionClickForcesSelection;
+      return event.altKey && event.button === 0 && !event.ctrlKey && this._optionsService.rawOptions.macOptionClickForcesSelection;
     }
 
     return event.shiftKey;
@@ -639,7 +675,9 @@ export class SelectionService extends Disposable implements ISelectionService {
     if (this._optionsService.rawOptions.mouseEventsRequireAlt && this._mouseStateService.areMouseEventsActive) {
       return false;
     }
-    return event.altKey && !(Browser.isMac && this._optionsService.rawOptions.macOptionClickForcesSelection);
+    // Option forces a regular selection only while an app has mouse reporting on, where it's what
+    // gets a selection at all; elsewhere Option still selects a column
+    return event.altKey && !(Browser.isMac && this._optionsService.rawOptions.macOptionClickForcesSelection && this._mouseStateService.areMouseEventsActive);
   }
 
   /**
@@ -756,9 +794,16 @@ export class SelectionService extends Disposable implements ISelectionService {
     this._removeMouseDownListeners();
 
     // An Alt click on the live screen moves the cursor; in scrollback, where it can't, it selects,
-    // also when the view reaches the live screen before the release
-    if (this.selectionText.length <= 1 && timeElapsed < Constants.ALT_CLICK_MOVE_CURSOR_TIME && event.altKey && this._optionsService.rawOptions.altClickMovesCursor
-      && this._isMouseDownOnLiveScreen && this._bufferService.buffer.ybase === this._bufferService.buffer.ydisp) {
+    // also when the view reaches the live screen before the release. Not while an app has mouse
+    // reporting on, which an Alt click that forces selection selects in, and which would get the
+    // arrow keys as input.
+    const start = this._model.finalSelectionStart;
+    const end = this._model.finalSelectionEnd;
+    // A click, not a drag across rows, whose column selection can be empty
+    const isOnOneRow = !start || !end || start[1] === end[1];
+    if (this.selectionText.length <= 1 && timeElapsed < Constants.ALT_CLICK_MOVE_CURSOR_TIME && event.altKey && this._optionsService.rawOptions.altClickMovesCursor && isOnOneRow
+      && this._isMouseDownOnLiveScreen && this._bufferService.buffer.ybase === this._bufferService.buffer.ydisp
+      && !this._mouseStateService.areMouseEventsActive) {
       const coordinates = this._mouseCoordsService.getCoords(
         event,
         this._element,
@@ -842,6 +887,7 @@ export class SelectionService extends Disposable implements ISelectionService {
 
   public setSelection(col: number, row: number, length: number): void {
     this._model.clearSelection();
+    this._activeSelectionMode = SelectionMode.NORMAL;
     this._removeMouseDownListeners();
     this._model.selectionStart = [col, row];
     this._model.selectionStartLength = length;
@@ -850,8 +896,9 @@ export class SelectionService extends Disposable implements ISelectionService {
   }
 
   public rightClickSelect(ev: MouseEvent): void {
-    if (!this._isClickInSelection(ev)) {
-      if (this._selectWordAtCursor(ev, false)) {
+    // The word under the pointer, as for telling whether it's in the selection
+    if (!this.isClickInSelection(ev)) {
+      if (this._selectWordAtCursor(ev, false, true)) {
         this.refresh(true);
       }
       this._fireEventIfSelectionChanged();

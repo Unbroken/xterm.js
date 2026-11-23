@@ -205,7 +205,8 @@ declare module '@xterm/xterm' {
      * regardless of whether the terminal is in mouse events mode. This will
      * also prevent mouse events from being emitted by the terminal. For
      * example, this allows you to use xterm.js' regular selection inside tmux
-     * with mouse mode enabled.
+     * with mouse mode enabled. While no app has mouse events on, Option+drag
+     * still selects a column.
      */
     macOptionClickForcesSelection?: boolean;
 
@@ -268,6 +269,14 @@ declare module '@xterm/xterm' {
      * standard behavior in a lot of macOS applications.
      */
     rightClickSelectsWord?: boolean;
+
+    /**
+     * Whether a right click on the selection still goes to an app with mouse
+     * reporting on. By default it doesn't, so that a context menu can copy the
+     * selection, which the app's report would clear; an embedder that shows
+     * no context menu can send it to the app.
+     */
+    rightClickOnSelectionGoesToApp?: boolean;
 
     /**
      * Whether screen reader support is enabled. When on this will expose
