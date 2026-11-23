@@ -1735,19 +1735,19 @@ describe('InputHandler', () => {
     });
   });
   describe('XTVERSION (CSI > q, CSI > 0 q)', () => {
-    it('should report xterm.js version', async () => {
+    it('should report Unbroken Code with its xterm.js version', async () => {
       const stack: string[] = [];
       coreService.onData(data => stack.push(data));
       await inputHandler.parseP('\x1b[>q');
       assert.strictEqual(stack.length, 1);
-      assert.ok(stack[0].match(/^\x1bP>\|xterm\.js\(\d+\.\d+\.\d+(-beta\.\d+)?\)\x1b\\/));
+      assert.ok(stack[0].match(/^\x1bP>\|Unbroken Code \(xterm\.js \d+\.\d+\.\d+(-beta\.\d+)?\)\x1b\\/));
     });
-    it('should report xterm.js version for CSI > 0 q', async () => {
+    it('should report Unbroken Code with its xterm.js version for CSI > 0 q', async () => {
       const stack: string[] = [];
       coreService.onData(data => stack.push(data));
       await inputHandler.parseP('\x1b[>0q');
       assert.strictEqual(stack.length, 1);
-      assert.ok(stack[0].match(/^\x1bP>\|xterm\.js\(\d+\.\d+\.\d+(-beta\.\d+)?\)\x1b\\/));
+      assert.ok(stack[0].match(/^\x1bP>\|Unbroken Code \(xterm\.js \d+\.\d+\.\d+(-beta\.\d+)?\)\x1b\\/));
     });
     it('should not report for CSI > 1 q', async () => {
       const stack: string[] = [];

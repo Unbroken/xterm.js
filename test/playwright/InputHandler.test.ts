@@ -1505,7 +1505,7 @@ test.describe('InputHandler Integration Tests', () => {
     test('CSI > Ps q - Report xterm name and version (XTVERSION).', async () => {
       await ctx.proxy.write('\x1b[>q');
       ok(recordedData.length === 1);
-      ok(recordedData[0].startsWith('\x1bP>|xterm.js('));
+      ok(recordedData[0].startsWith('\x1bP>|Unbroken Code (xterm.js '));
       ok(recordedData[0].endsWith('\x1b\\'));
     });
     test.skip('CSI Ps q - Load LEDs (DECLL), VT100.', async () => {

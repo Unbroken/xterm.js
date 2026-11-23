@@ -1797,13 +1797,17 @@ export class InputHandler extends Disposable implements IInputHandler {
    *
    * The response is a DCS sequence identifying the version: DCS > | text ST
    *
+   * The text names Unbroken Code, with the version of xterm.js. Apps that treat xterm.js specially,
+   * such as Claude Code, look for a name that starts with xterm.js, and they tune for upstream's
+   * behavior, such as its wheel events, which this fork changes.
+   *
    * @vt: #Y CSI XTVERSION "Report Xterm Version" "CSI > q" "Report the terminal name and version."
    */
   public sendXtVersion(params: IParams): boolean {
     if (params.params[0] > 0) {
       return true;
     }
-    this._coreService.triggerDataEvent(`${C0.ESC}P>|xterm.js(${XTERM_VERSION})${C0.ESC}\\`);
+    this._coreService.triggerDataEvent(`${C0.ESC}P>|Unbroken Code (xterm.js ${XTERM_VERSION})${C0.ESC}\\`);
     return true;
   }
 
