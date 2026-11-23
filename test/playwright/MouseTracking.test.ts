@@ -1432,6 +1432,24 @@ test.describe('Mouse Tracking Tests', () => {
    */
 });
 
+test.describe('Selection with mouse reporting', () => {
+  test.afterEach(async () => {
+    await resetMouseModes();
+  });
+
+  test('keeps a selection while the mouse moves, but not after a click', async () => {
+    await resetMouseModes();
+    await ctx.proxy.write('\x1b[H\x1b[2Jhello world\x1b[?1003h\x1b[?1006h');
+    await ctx.page.evaluate(`window.term.select(0, 0, 5)`);
+    await mouseMove(20, 5);
+    await mouseMove(30, 8);
+    const afterMove = await ctx.proxy.getSelection();
+    await ctx.page.mouse.click(...(await cellPos(30, 8)) as [number, number]);
+    const afterClick = await ctx.proxy.getSelection();
+    deepStrictEqual({ afterMove, afterClick }, { afterMove: 'hello', afterClick: '' });
+  });
+});
+
 test.describe('Right click with mouse reporting', () => {
   test.afterEach(async () => {
     await resetMouseModes();

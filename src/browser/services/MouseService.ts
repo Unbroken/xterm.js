@@ -212,6 +212,8 @@ export class MouseService implements IMouseService {
       && this._optionsService.rawOptions.mouseEventsRequireAlt
       && this._mouseStateService.areMouseEventsActive;
 
+    // Motion with no button held, also not one that reports can't name, such as Back or Forward
+    const isHover = ev.type === 'mousemove' && !(ev as MouseEvent).buttons;
     let reported = false;
     for (let i = 0; i < reportCount; i++) {
       reported = this._reportMouseEvent({
@@ -224,7 +226,7 @@ export class MouseService implements IMouseService {
         ctrl: ev.ctrlKey,
         alt: stripAltFromReport ? false : ev.altKey,
         shift: ev.shiftKey
-      }) === true || reported;
+      }, isHover) === true || reported;
     }
     return reported;
   }
@@ -600,7 +602,7 @@ export class MouseService implements IMouseService {
    * app: the default encoding has no report past its last column, and nothing goes to the app while
    * its input is disabled, as a listener of the report could make it.
    */
-  private _reportMouseEvent(e: ICoreMouseEvent): boolean | undefined {
+  private _reportMouseEvent(e: ICoreMouseEvent, isHover: boolean = false): boolean | undefined {
     // range check for col/row, written so that NaN fails the check
     if (!(e.col >= 0 && e.col < this._bufferService.cols
       && e.row >= 0 && e.row < this._bufferService.rows)) {
@@ -646,7 +648,9 @@ export class MouseService implements IMouseService {
       if (this._mouseStateService.isDefaultEncoding) {
         this._coreService.triggerBinaryEvent(report);
       } else {
-        this._coreService.triggerDataEvent(report, true);
+        // Motion with no button held isn't the user's input, which would clear a selection, such as
+        // one made with a modifier that forces selection, and scroll to the live screen
+        this._coreService.triggerDataEvent(report, !isHover);
       }
     }
 
