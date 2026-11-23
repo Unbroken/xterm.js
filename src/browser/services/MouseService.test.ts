@@ -467,3 +467,239 @@ describe('MouseService multi-window', () => {
     assert.deepEqual(openDocument.removed, []);
   });
 });
+
+describe('MouseService wheel', () => {
+  let mouseService: MouseService;
+  let mouseStateService: MouseStateService;
+  let reports: string[];
+  let hasScrollback: boolean;
+  const originalWheelEvent = (globalThis as any).WheelEvent;
+
+  // Rows 17px high
+  const renderService = new MockRenderService();
+  renderService.dimensions.css.cell.height = 17;
+  renderService.dimensions.css.canvas.height = 17 * 24;
+  renderService.dimensions.device.cell.height = 34;
+  const coreBrowserService = new MockCoreBrowserService();
+  coreBrowserService.dpr = 2;
+
+  beforeEach(() => {
+    (globalThis as any).WheelEvent = originalWheelEvent ?? { DOM_DELTA_PIXEL: 0, DOM_DELTA_LINE: 1, DOM_DELTA_PAGE: 2 };
+    reports = [];
+    hasScrollback = false;
+    mouseStateService = new MouseStateService();
+    mouseService = new MouseService(
+      renderService,
+      { getMouseReportCoords: () => ({ col: 0, row: 0, x: 0, y: 0 }) } as any,
+      mouseStateService,
+      {
+        triggerDataEvent: (data: string) => reports.push(data),
+        triggerBinaryEvent: (data: string) => reports.push(data),
+        decPrivateModes: { applicationCursorKeys: false }
+      } as any,
+      { buffer: { get hasScrollback() { return hasScrollback; } }, cols: 80, rows: 24 } as any,
+      optionsService,
+      new MockSelectionService(),
+      logService,
+      coreBrowserService
+    );
+  });
+
+  afterEach(() => {
+    (globalThis as any).WheelEvent = originalWheelEvent;
+  });
+
+  function wheel(deltaY: number, options: { deltaMode?: number, ctrlKey?: boolean, timeStamp?: number } = {}): WheelEvent {
+    return { type: 'wheel', deltaX: 0, deltaY, deltaMode: options.deltaMode ?? 0, timeStamp: options.timeStamp ?? 0, shiftKey: false, ctrlKey: options.ctrlKey ?? false, altKey: false, preventDefault: () => {}, stopPropagation: () => {} } as any;
+  }
+
+  /** The rows that a wheel event scrolls in an app, which also tells the device from its samples. */
+  function consume(ev: WheelEvent, rowHeight: number): number {
+    (mouseService as any)._recordWheelEvent(ev);
+    return (mouseService as any)._consumeWheelEvent(ev, rowHeight);
+  }
+
+  /** The rows that wheel events scroll, starting without a partial row from earlier events. */
+  function rowsOf(...events: WheelEvent[]): number[] {
+    mouseService.reset();
+    return events.map(ev => consume(ev, 17));
+  }
+
+  it('scrolls a row for each row height a trackpad moves, keeping the rest for the next event', () => {
+    assert.deepEqual({
+      // 10 events of 5px: 50px is 2 rows of 17px, with 16px left over
+      even: rowsOf(...Array.from({ length: 10 }, () => wheel(5))),
+      // The pixels are added up before they're divided into rows
+      split: rowsOf(wheel(1), wheel(2), wheel(7), wheel(7))
+    }, {
+      even: [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+      split: [0, 0, 0, 1]
+    });
+  });
+
+  it('scrolls a row for each notch of a physical wheel, line or page', () => {
+    assert.deepEqual({
+      // Chromium's notches are 40px, and an event can carry several
+      notches: rowsOf(wheel(40), wheel(40), wheel(120)),
+      lines: rowsOf(wheel(2, { deltaMode: 1 })),
+      // Half notches add up with whole ones
+      fractions: rowsOf(wheel(1, { deltaMode: 1 }), wheel(0.5, { deltaMode: 1 }), wheel(1, { deltaMode: 1 }), wheel(0.5, { deltaMode: 1 })),
+      // Pages coalesced into one event each count
+      pages: rowsOf(wheel(1, { deltaMode: 2 }), wheel(2, { deltaMode: 2 }))
+    }, {
+      notches: [1, 1, 3],
+      lines: [2],
+      fractions: [1, 0, 1, 1],
+      pages: [1, 2]
+    });
+  });
+
+  it('scrolls whole rows at fractional display scales', () => {
+    mouseService.reset();
+    // Rows of 17.6px, the rendered height of 22 device pixels at 125%, which a line count rounds
+    // back to almost 3
+    assert.deepEqual(consume(wheel(3, { deltaMode: 1 }), 17.6), 3);
+  });
+
+  it('tells a trackpad by its horizontal movement too', () => {
+    // A horizontal trackpad sample, then 40px down: 2 rows of 17px, not a notch
+    mouseService.reset();
+    mouseStateService.activeProtocol = 'VT200';
+    (mouseService as any)._sendEvent({ target: { screenElement: {} } }, { ...wheel(0), deltaX: 5 });
+    (mouseService as any)._sendEvent({ target: { screenElement: {} } }, wheel(40));
+    assert.equal(reports.length, 2);
+  });
+
+  it('forgets the wheel events before a pause when telling a physical wheel from a trackpad', () => {
+    // A diagonal trackpad movement, then a 40px notch: by the times the events happened, which may
+    // be dispatched together, two seconds later, half a second later, and earlier, as in another
+    // window, even by less than the pause
+    const after = (time: number) => {
+      mouseService.reset();
+      consume({ ...wheel(5, { timeStamp: 5000 }), deltaX: 5 }, 17);
+      return consume(wheel(40, { timeStamp: time }), 17);
+    };
+    assert.deepEqual(
+      { pause: after(7000), gesture: after(5500), earlier: after(1000), slightlyEarlier: after(4500) },
+      { pause: 1, gesture: 2, earlier: 1, slightlyEarlier: 1 }
+    );
+  });
+
+  it('forgets the wheel events before a reset when telling a physical wheel from a trackpad', () => {
+    // A diagonal trackpad movement, then a reset of the terminal, then a 40px notch
+    consume({ ...wheel(5), deltaX: 5 }, 17);
+    assert.deepEqual(rowsOf(wheel(40)), [1]);
+  });
+
+  it('keeps the fraction of lines scrolled at a lower sensitivity for the next event', () => {
+    const sensitivity = optionsService.rawOptions.scrollSensitivity;
+    optionsService.rawOptions.scrollSensitivity = 0.5;
+    try {
+      assert.deepEqual(rowsOf(wheel(3, { deltaMode: 1 }), wheel(3, { deltaMode: 1 })), [1, 2]);
+    } finally {
+      optionsService.rawOptions.scrollSensitivity = sensitivity;
+    }
+  });
+
+  it('scrolls at most a screen of rows for an event, dropping the rest, and none for an amount that isn\'t a number', () => {
+    const sensitivity = optionsService.rawOptions.scrollSensitivity;
+    try {
+      // A screen and a half, then 5px: nothing of the half screen is kept
+      const capped = rowsOf(wheel(17 * 36 + 8), wheel(5));
+      // A billion lines with 17.6px rows, which divide back into slightly fewer, then 5px
+      mouseService.reset();
+      const billion = [consume(wheel(1e9, { deltaMode: 1 }), 17.6), consume(wheel(5), 17.6)];
+      // Almost 25 lines, which count as 25 and so are capped, then almost a line, which is one
+      const rounded = rowsOf(wheel(25 - 0.75e-9, { deltaMode: 1 }), wheel(1 - 0.75e-9, { deltaMode: 1 }));
+      // Amounts too large for a number, from the line's height or from the sensitivity, the last
+      // with 8px pending, then 9px
+      const huge = rowsOf(wheel(1e308, { deltaMode: 1 }));
+      optionsService.rawOptions.scrollSensitivity = 0.1;
+      huge.push(...rowsOf(wheel(1e308, { deltaMode: 1 })));
+      mouseService.reset();
+      optionsService.rawOptions.scrollSensitivity = 1;
+      huge.push(consume(wheel(8), 17));
+      optionsService.rawOptions.scrollSensitivity = 1e308;
+      huge.push(consume(wheel(-35), 17));
+      optionsService.rawOptions.scrollSensitivity = 1;
+      huge.push(consume(wheel(9), 17));
+      // A huge number of lines at a tiny sensitivity, which is 2 rows
+      optionsService.rawOptions.scrollSensitivity = 2e-308;
+      const tiny = rowsOf(wheel(1e308, { deltaMode: 1 }));
+      optionsService.rawOptions.scrollSensitivity = 1;
+      // 8px pending stays through an amount that isn't a number, and 9px more make a row
+      mouseService.reset();
+      const kept = [consume(wheel(8), 17), consume(wheel(NaN), 17), consume(wheel(9), 17)];
+      assert.deepEqual(
+        { capped, billion, rounded, huge, tiny, kept },
+        { capped: [24, 0], billion: [24, 0], rounded: [24, 1], huge: [24, 24, 0, -24, 0], tiny: [2], kept: [0, 0, 1] }
+      );
+    } finally {
+      optionsService.rawOptions.scrollSensitivity = sensitivity;
+    }
+  });
+
+  it('tells a trackpad by a sample that sends no report', () => {
+    // A horizontal trackpad sample where the mouse has no position, then 40px down: 2 rows of 17px
+    mouseService.reset();
+    mouseStateService.activeProtocol = 'VT200';
+    const coords = (mouseService as any)._mouseCoordsService;
+    const getMouseReportCoords = coords.getMouseReportCoords;
+    coords.getMouseReportCoords = () => undefined;
+    try {
+      (mouseService as any)._sendEvent({ target: { screenElement: {} } }, { ...wheel(0), deltaX: 5 });
+    } finally {
+      coords.getMouseReportCoords = getMouseReportCoords;
+    }
+    (mouseService as any)._sendEvent({ target: { screenElement: {} } }, wheel(40));
+    assert.equal(reports.length, 2);
+  });
+
+  it('sends a wheel report for each row a wheel event scrolls, without multiplying it for modifiers', () => {
+    mouseStateService.activeProtocol = 'VT200';
+    (mouseService as any)._sendEvent({ target: { screenElement: {} } }, wheel(35));
+    const plain = reports.length;
+    reports = [];
+    // VS Code's default fast scroll multiplier
+    const fastScrollSensitivity = optionsService.rawOptions.fastScrollSensitivity;
+    optionsService.rawOptions.fastScrollSensitivity = 5;
+    try {
+      (mouseService as any)._sendEvent({ target: { screenElement: {} } }, wheel(35, { ctrlKey: true }));
+    } finally {
+      optionsService.rawOptions.fastScrollSensitivity = fastScrollSensitivity;
+    }
+    assert.deepEqual({ plain, ctrl: reports.length }, { plain: 2, ctrl: 2 });
+  });
+
+  it('scrolls in the direction of the rows scrolled, which pending movement can outweigh', () => {
+    // 20px down is pending with 24px rows, which become 12px rows before 1px up
+    renderService.dimensions.css.canvas.height = 24 * 24;
+    (mouseService as any)._handlePassiveWheel({ requestedEvents: {} }, wheel(20));
+    renderService.dimensions.css.canvas.height = 12 * 24;
+    try {
+      (mouseService as any)._handlePassiveWheel({ requestedEvents: {} }, wheel(-1));
+    } finally {
+      renderService.dimensions.css.canvas.height = 17 * 24;
+    }
+    assert.deepEqual(reports, ['\x1b[B']);
+  });
+
+  it('counts rows by their rendered height', () => {
+    // At 125% with 22 device pixel cells, the renderer rounds the 24 rows to a 422px screen, while
+    // the WebGL renderer's cell height stays 17.6px
+    renderService.dimensions.css.canvas.height = 422;
+    renderService.dimensions.css.cell.height = 17.6;
+    try {
+      (mouseService as any)._handlePassiveWheel({ requestedEvents: {} }, wheel(422));
+    } finally {
+      renderService.dimensions.css.canvas.height = 17 * 24;
+      renderService.dimensions.css.cell.height = 17;
+    }
+    assert.equal(reports.length, 24);
+  });
+
+  it('sends an arrow key for each row a wheel event scrolls without scrollback or mouse reporting', () => {
+    (mouseService as any)._handlePassiveWheel({ requestedEvents: {} }, wheel(-35));
+    assert.deepEqual(reports, ['\x1b[A', '\x1b[A']);
+  });
+});

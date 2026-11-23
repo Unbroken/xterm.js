@@ -10,6 +10,11 @@ import { C0 } from '../../common/data/EscapeSequences';
 import { DisposableStore, MutableDisposable } from '../../common/Lifecycle';
 import { ICoreBrowserService, IMouseCoordsService, IMouseService, IMouseServiceTarget, IRenderService, ISelectionService } from './Services';
 import { Gesture, EventType as GestureEventType, IGestureEvent } from '../scrollable/touch';
+import { type IMouseWheelEvent, StandardWheelEvent } from '../scrollable/mouseEvent';
+import { MouseWheelClassifier } from '../scrollable/scrollableElement';
+
+/** How long a pause between wheel events ends a gesture, in milliseconds. */
+const WHEEL_GESTURE_PAUSE = 1000;
 
 type RequestedMouseEvents = Record<'mouseup' | 'wheel' | 'mousedrag' | 'mousemove', EventListener | null>;
 
@@ -29,7 +34,10 @@ export class MouseService implements IMouseService {
   public serviceBrand: undefined;
 
   private _lastEvent: ICoreMouseEvent | null = null;
-  private _wheelPartialScroll: number = 0;
+  /** Distinguishes a physical mouse wheel from continuous scrolling such as a trackpad's. */
+  private _wheelClassifier = new MouseWheelClassifier();
+  private _wheelPartialPixels: number = 0;
+  private _lastWheelTime: number = 0;
   private _touchScrollAccumulator: number = 0;
   private _altMouseCursor: AltMouseCursorController | undefined;
 
@@ -102,6 +110,11 @@ export class MouseService implements IMouseService {
   }
 
   private _sendEvent(ctx: IMouseBindContext, ev: MouseEvent | WheelEvent): boolean {
+    // Every wheel event is a sample of the device, even one without a report
+    if (ev.type === 'wheel') {
+      this._recordWheelEvent(ev as WheelEvent);
+    }
+
     // Get mouse coordinates
     const pos = this._mouseCoordsService.getMouseReportCoords(ev as MouseEvent, ctx.target.screenElement);
     if (!pos) {
@@ -110,6 +123,8 @@ export class MouseService implements IMouseService {
 
     let but: CoreMouseButton;
     let action: CoreMouseAction | undefined;
+    // A wheel event that scrolls several rows sends a report for each
+    let reportCount = 1;
     switch ((ev as MouseEvent & { overrideType?: string }).overrideType || ev.type) {
       case 'mousemove':
         action = CoreMouseAction.MOVE;
@@ -143,16 +158,14 @@ export class MouseService implements IMouseService {
         if (deltaY === 0) {
           return false;
         }
-        const lines = this._consumeWheelEvent(
-          ev as WheelEvent,
-          this._renderService?.dimensions?.device?.cell?.height,
-          this._coreBrowserService?.dpr
-        );
+        const lines = this._consumeWheelEvent(ev as WheelEvent, this._getDisplayedRowHeight());
         if (lines === 0) {
           return false;
         }
-        action = deltaY < 0 ? CoreMouseAction.UP : CoreMouseAction.DOWN;
+        // The direction of the rows scrolled, which pending movement can outweigh
+        action = lines < 0 ? CoreMouseAction.UP : CoreMouseAction.DOWN;
         but = CoreMouseButton.WHEEL;
+        reportCount = Math.abs(lines);
         break;
       default:
         // dont handle other event types by accident
@@ -178,17 +191,21 @@ export class MouseService implements IMouseService {
       && this._optionsService.rawOptions.mouseEventsRequireAlt
       && this._mouseStateService.areMouseEventsActive;
 
-    return this._triggerMouseEvent({
-      col: pos.col,
-      row: pos.row,
-      x: pos.x,
-      y: pos.y,
-      button: but,
-      action,
-      ctrl: ev.ctrlKey,
-      alt: stripAltFromReport ? false : ev.altKey,
-      shift: ev.shiftKey
-    });
+    let sent = false;
+    for (let i = 0; i < reportCount; i++) {
+      sent = this._triggerMouseEvent({
+        col: pos.col,
+        row: pos.row,
+        x: pos.x,
+        y: pos.y,
+        button: but,
+        action,
+        ctrl: ev.ctrlKey,
+        alt: stripAltFromReport ? false : ev.altKey,
+        shift: ev.shiftKey
+      }) || sent;
+    }
+    return sent;
   }
 
   private _handleMouseUp(ctx: IMouseBindContext, ev: MouseEvent): void {
@@ -255,6 +272,11 @@ export class MouseService implements IMouseService {
       return;
     }
 
+    // Only the apps of buffers without scrollback get these wheel events
+    if (!this._bufferService.buffer.hasScrollback) {
+      this._recordWheelEvent(ev);
+    }
+
     if (!this._mouseStateService.allowCustomWheelEvent(ev)) {
       return false;
     }
@@ -262,10 +284,7 @@ export class MouseService implements IMouseService {
     if (!this._bufferService.buffer.hasScrollback) {
       // Convert wheel events into up/down events when the buffer does not have scrollback, this
       // enables scrolling in apps hosted in the alt buffer such as vim or tmux even when mouse
-      // events are not enabled.
-      // This used implementation used get the actual lines/partial lines scrolled from the
-      // viewport but since moving to the new viewport implementation has been simplified to
-      // simply send a single up or down sequence.
+      // events are not enabled. Each row the wheel scrolls sends one sequence.
 
       // Do nothing if there's no vertical scroll
       const deltaY = ev.deltaY;
@@ -273,20 +292,18 @@ export class MouseService implements IMouseService {
         return false;
       }
 
-      const lines = this._consumeWheelEvent(
-        ev,
-        this._renderService?.dimensions?.device?.cell?.height,
-        this._coreBrowserService?.dpr
-      );
+      const lines = this._consumeWheelEvent(ev, this._getDisplayedRowHeight());
       if (lines === 0) {
         ev.preventDefault();
         ev.stopPropagation();
         return false;
       }
 
-      // Construct and send sequences
-      const sequence = C0.ESC + (this._coreService.decPrivateModes.applicationCursorKeys ? 'O' : '[') + (ev.deltaY < 0 ? 'A' : 'B');
-      this._coreService.triggerDataEvent(sequence, true);
+      // Construct and send sequences, one for each row scrolled
+      const sequence = C0.ESC + (this._coreService.decPrivateModes.applicationCursorKeys ? 'O' : '[') + (lines < 0 ? 'A' : 'B');
+      for (let i = 0; i < Math.abs(lines); i++) {
+        this._coreService.triggerDataEvent(sequence, true);
+      }
       ev.preventDefault();
       ev.stopPropagation();
       return false;
@@ -373,7 +390,8 @@ export class MouseService implements IMouseService {
 
   public reset(): void {
     this._lastEvent = null;
-    this._wheelPartialScroll = 0;
+    this._wheelPartialPixels = 0;
+    this._wheelClassifier = new MouseWheelClassifier();
     this._touchScrollAccumulator = 0;
   }
 
@@ -442,46 +460,82 @@ export class MouseService implements IMouseService {
     }
   }
 
-  private _applyScrollModifier(amount: number, ev: WheelEvent): number {
-    // Multiply the scroll speed when the modifier key is pressed
-    if (ev.altKey || ev.ctrlKey || ev.shiftKey) {
-      return amount * this._optionsService.rawOptions.fastScrollSensitivity * this._optionsService.rawOptions.scrollSensitivity;
+  /**
+   * Adds a wheel event to the samples that tell a physical mouse wheel from continuous scrolling,
+   * including events without vertical movement, as the viewport's scrolling does. A wheel event
+   * after a pause starts a new gesture, which may be with another device. The pause is measured
+   * between the times the events happened, which a busy renderer may dispatch together; a time
+   * that goes back, as in a window the terminal moved to, starts a new gesture too.
+   */
+  private _recordWheelEvent(ev: WheelEvent): void {
+    const time = ev.timeStamp;
+    if (!(time >= this._lastWheelTime && time - this._lastWheelTime <= WHEEL_GESTURE_PAUSE)) {
+      this._wheelClassifier = new MouseWheelClassifier();
     }
-    return amount * this._optionsService.rawOptions.scrollSensitivity;
+    this._lastWheelTime = time;
+    // Chromium's wheel events also have the wheelDelta properties that it reads
+    this._wheelClassifier.acceptStandardWheelEvent(new StandardWheelEvent(ev as unknown as IMouseWheelEvent));
   }
 
   /**
-   * Processes a wheel event, accounting for partial scrolls for trackpad, mouse scrolls.
-   * This prevents hyper-sensitive scrolling in alt buffer.
+   * The height of the rows on screen in CSS pixels, which wheel deltas are in: the rendered
+   * screen's height, which the renderers round, divided into its rows.
    */
-  private _consumeWheelEvent(ev: WheelEvent, cellHeight?: number, dpr?: number): number {
+  private _getDisplayedRowHeight(): number | undefined {
+    const height = this._renderService?.dimensions?.css?.canvas?.height;
+    return height && this._bufferService.rows ? height / this._bufferService.rows : undefined;
+  }
+
+  /**
+   * Processes a wheel event that an app handles, as mouse wheel reports or arrow keys, into the
+   * rows it scrolls, like Alacritty: continuous scrolling, such as a trackpad's, scrolls a row for
+   * each row height of movement, keeping the rest for the next event, while each notch of a
+   * physical wheel, line or page scrolls one row, fractions kept too. The terminal's own fast
+   * scroll modifiers don't apply, since the app gets the modifiers in its reports. An event
+   * scrolls at most a screen of rows, and then drops the rest of its movement, even an amount too
+   * large for a number.
+   */
+  private _consumeWheelEvent(ev: WheelEvent, rowHeight?: number): number {
     // Do nothing if it's not a vertical scroll event
     if (ev.deltaY === 0 || ev.shiftKey) {
       return 0;
     }
 
-    if (cellHeight === undefined || dpr === undefined) {
+    // The height of the rows on screen in CSS pixels, which wheel deltas are in
+    if (!rowHeight) {
       return 0;
     }
 
-    const targetWheelEventPixels = cellHeight / dpr;
-    let amount = this._applyScrollModifier(ev.deltaY, ev);
+    // Chromium's wheel events also have the wheelDelta properties that it reads
+    const standardEvent = new StandardWheelEvent(ev as unknown as IMouseWheelEvent);
 
+    // Everything adds up in pixels, so that how the movement is split into events doesn't
+    // matter: a notch of a physical wheel, a line or a page is a row height, fractions included.
+    // The sensitivity applies first, so that only an amount of more than a screen can overflow.
+    const sensitivity = this._optionsService.rawOptions.scrollSensitivity;
+    let pixels: number;
     if (ev.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
-      amount /= (targetWheelEventPixels + 0.0); // Prevent integer division
-
-      const isLikelyTrackpad = Math.abs(ev.deltaY) < 50;
-      if (isLikelyTrackpad) {
-        amount *= 0.3;
-      }
-
-      this._wheelPartialScroll += amount;
-      amount = Math.floor(Math.abs(this._wheelPartialScroll)) * (this._wheelPartialScroll > 0 ? 1 : -1);
-      this._wheelPartialScroll %= 1;
-    } else if (ev.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-      amount *= this._bufferService.rows;
+      pixels = this._wheelClassifier.isPhysicalMouseWheel()
+        ? Math.sign(ev.deltaY) * (Math.abs(standardEvent.deltaY) || 1) * sensitivity * rowHeight
+        : ev.deltaY * sensitivity;
+    } else {
+      pixels = ev.deltaY * sensitivity * rowHeight;
     }
-    return amount;
+    // An amount that isn't a number sends nothing, and keeps the movement from earlier events
+    const totalPixels = this._wheelPartialPixels + pixels;
+    if (Number.isNaN(totalPixels)) {
+      return 0;
+    }
+    // With a tolerance for the rounding of fractional row heights, such as at 125% display scaling
+    const exactRows = totalPixels / rowHeight;
+    const rows = Math.trunc(exactRows + Math.sign(exactRows) * 1e-9);
+    const screenRows = this._bufferService.rows;
+    if (Math.abs(rows) > screenRows) {
+      this._wheelPartialPixels = 0;
+      return Math.sign(rows) * screenRows;
+    }
+    this._wheelPartialPixels = totalPixels - rows * rowHeight;
+    return rows;
   }
 
   /**

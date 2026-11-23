@@ -38,7 +38,7 @@ class MouseWheelClassifierItem {
   }
 }
 
-class MouseWheelClassifier {
+export class MouseWheelClassifier {
 
   public static readonly INSTANCE = new MouseWheelClassifier();
 
